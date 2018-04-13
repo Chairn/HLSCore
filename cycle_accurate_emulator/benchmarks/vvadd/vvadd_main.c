@@ -8,7 +8,7 @@
 // third vector. The input data (and reference data) should be
 // generated using the vvadd_gendata.pl perl script and dumped
 // to a file named dataset1.h.
- 
+
 
 //--------------------------------------------------------------------------
 // Input/Reference Data
@@ -21,9 +21,9 @@
 
 void vvadd( int n, int a[], int b[], int c[] )
 {
-  int i;
-  for ( i = 0; i < n; i++ )
-    c[i] = a[i] + b[i];
+    int i;
+    for ( i = 0; i < n; i++ )
+        c[i] = a[i] + b[i];
 }
 
 //--------------------------------------------------------------------------
@@ -31,14 +31,14 @@ void vvadd( int n, int a[], int b[], int c[] )
 
 int main()
 {
-  int results_data[DATA_SIZE];
+    int results_data[DATA_SIZE];
 
-  // Do the vvadd
-  int i;
-  CUSTOMX_R_R_R(0,i,0,0,0);
-  vvadd( DATA_SIZE, input1_data, input2_data, results_data );
-  CUSTOMX_R_R_R(0,i,0,0,0);
- 
-  //verify
-  return verify(DATA_SIZE,results_data,verify_data);	
+    // Do the vvadd
+    int i;
+    CUSTOMX_R_R_R(0,i,0,0,0);
+    vvadd( DATA_SIZE, input1_data, input2_data, results_data );
+    CUSTOMX_R_R_R(0,i,0,0,0);
+
+    //verify
+    return verify(DATA_SIZE,results_data,verify_data);
 }

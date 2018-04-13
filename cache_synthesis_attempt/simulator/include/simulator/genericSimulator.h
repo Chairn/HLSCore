@@ -69,53 +69,57 @@
  *********************************************************/
 
 
-class GenericSimulator {
+class GenericSimulator
+{
 public:
 
-GenericSimulator(void) : memory(){this->debugLevel = 0;};
+    GenericSimulator(void) : memory()
+    {
+        this->debugLevel = 0;
+    };
 
-int debugLevel = 0;
-int stop = 0;
+    int debugLevel = 0;
+    int stop = 0;
 
-std::map<ac_int<64, false>, ac_int<8, true> > memory;
-ac_int<32, true> REG[64];
-float regf[64];
-void initialize(int argc, char* argv[]);
+    std::map<ac_int<64, false>, ac_int<8, true> > memory;
+    ac_int<32, true> REG[64];
+    float regf[64];
+    void initialize(int argc, char* argv[]);
 
 
 //********************************************************
 //Memory interfaces
 
-void stb(ac_int<64, false> addr, ac_int<8, true> value);
-void sth(ac_int<64, false> addr, ac_int<16, true> value);
-void stw(ac_int<64, false> addr, ac_int<32, true> value);
-void std(ac_int<64, false> addr, ac_int<64, true> value);
+    void stb(ac_int<64, false> addr, ac_int<8, true> value);
+    void sth(ac_int<64, false> addr, ac_int<16, true> value);
+    void stw(ac_int<64, false> addr, ac_int<32, true> value);
+    void std(ac_int<64, false> addr, ac_int<64, true> value);
 
-ac_int<8, true> ldb(ac_int<64, false> addr);
-ac_int<16, true> ldh(ac_int<64, false> addr);
-ac_int<32, true> ldw(ac_int<64, false> addr);
-ac_int<64, true> ldd(ac_int<64, false> addr);
+    ac_int<8, true> ldb(ac_int<64, false> addr);
+    ac_int<16, true> ldh(ac_int<64, false> addr);
+    ac_int<32, true> ldw(ac_int<64, false> addr);
+    ac_int<64, true> ldd(ac_int<64, false> addr);
 
 //********************************************************
 //System calls
 
-std::map<ac_int<16, true>, FILE*> fileMap;
-FILE **inStreams, **outStreams;
-int nbInStreams, nbOutStreams;
-unsigned int heapAddress;
+    std::map<ac_int<16, true>, FILE*> fileMap;
+    FILE **inStreams, **outStreams;
+    int nbInStreams, nbOutStreams;
+    unsigned int heapAddress;
 
-ac_int<64, false> solveSyscall(ac_int<64, false> syscallId, ac_int<64, false> arg1, ac_int<64, false> arg2, ac_int<64, false> arg3, ac_int<64, false> arg4);
+    ac_int<64, false> solveSyscall(ac_int<64, false> syscallId, ac_int<64, false> arg1, ac_int<64, false> arg2, ac_int<64, false> arg3, ac_int<64, false> arg4);
 
-ac_int<64, false> doRead(ac_int<64, false> file, ac_int<64, false> bufferAddr, ac_int<64, false> size);
-ac_int<64, false> doWrite(ac_int<64, false> file, ac_int<64, false> bufferAddr, ac_int<64, false> size);
-ac_int<64, false> doOpen(ac_int<64, false> name, ac_int<64, false> flags, ac_int<64, false> mode);
-ac_int<64, false> doOpenat(ac_int<64, false> dir, ac_int<64, false> name, ac_int<64, false> flags, ac_int<64, false> mode);
-ac_int<64, true> doLseek(ac_int<64, false> file, ac_int<64, false> ptr, ac_int<64, false> dir);
-ac_int<64, false> doClose(ac_int<64, false> file);
-ac_int<64, false> doStat(ac_int<64, false> filename, ac_int<64, false> ptr);
-ac_int<64, false> doSbrk(ac_int<64, false> value);
-ac_int<64, false> doGettimeofday(ac_int<64, false> timeValPtr);
-ac_int<64, false> doUnlink(ac_int<64, false> path);
+    ac_int<64, false> doRead(ac_int<64, false> file, ac_int<64, false> bufferAddr, ac_int<64, false> size);
+    ac_int<64, false> doWrite(ac_int<64, false> file, ac_int<64, false> bufferAddr, ac_int<64, false> size);
+    ac_int<64, false> doOpen(ac_int<64, false> name, ac_int<64, false> flags, ac_int<64, false> mode);
+    ac_int<64, false> doOpenat(ac_int<64, false> dir, ac_int<64, false> name, ac_int<64, false> flags, ac_int<64, false> mode);
+    ac_int<64, true> doLseek(ac_int<64, false> file, ac_int<64, false> ptr, ac_int<64, false> dir);
+    ac_int<64, false> doClose(ac_int<64, false> file);
+    ac_int<64, false> doStat(ac_int<64, false> filename, ac_int<64, false> ptr);
+    ac_int<64, false> doSbrk(ac_int<64, false> value);
+    ac_int<64, false> doGettimeofday(ac_int<64, false> timeValPtr);
+    ac_int<64, false> doUnlink(ac_int<64, false> path);
 
 };
 

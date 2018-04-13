@@ -20,19 +20,21 @@
 #define LOAD 0
 #define STORE 1
 
-struct cache_index{
-	CORE_UINT(TAGBITS) tag;
-	CORE_UINT(1) dirtybit;
-	CORE_UINT(1) invalid;
+struct cache_index
+{
+    CORE_UINT(TAGBITS) tag;
+    CORE_UINT(1) dirtybit;
+    CORE_UINT(1) invalid;
 };
 
-struct Cache{
-	CORE_UINT(8) data[SETS][CACHEBLOCKBYTES];
-	CORE_UINT(32) dram_read_address;
-	CORE_UINT(32) dram_write_address;
-	CORE_UINT(IDBITS+1) id_counter_1;
-	CORE_UINT(IDBITS+1) id_counter_2;
-	struct cache_index index[SETS];
+struct Cache
+{
+    CORE_UINT(8) data[SETS][CACHEBLOCKBYTES];
+    CORE_UINT(32) dram_read_address;
+    CORE_UINT(32) dram_write_address;
+    CORE_UINT(IDBITS+1) id_counter_1;
+    CORE_UINT(IDBITS+1) id_counter_2;
+    struct cache_index index[SETS];
 };
 
 #endif /* CACHE_H */

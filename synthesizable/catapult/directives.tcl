@@ -16,7 +16,7 @@
 solution new -state initial
 solution options defaults
 solution options set /Input/CompilerFlags {-D __CATAPULT__=1}
-solution options set /Input/SearchPath /udd/emascare/Work/Code/Main/merge/include
+solution options set /Input/SearchPath ../include
 flow package require /SCVerify
 solution file add ../src/core.cpp -type C++
 solution file add ../src/testbench.cpp -type C++

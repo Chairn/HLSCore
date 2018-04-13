@@ -17,15 +17,16 @@
 #include <types.h>
 #include <simulator/genericSimulator.h>
 
-class RiscvSimulator : public GenericSimulator{
-	public:
-	ac_int<64, true> pc;
-	uint64_t n_inst;
-	uint64_t function_counter;
-	RiscvSimulator(void) : GenericSimulator(){};
-	int doSimulation(int nbCycles);
+class RiscvSimulator : public GenericSimulator
+{
+public:
+    ac_int<64, true> pc;
+    uint64_t n_inst;
+    uint64_t function_counter;
+    RiscvSimulator(void) : GenericSimulator() {};
+    int doSimulation(int nbCycles);
 
-	void doStep();
+    void doStep();
 };
 
 #endif

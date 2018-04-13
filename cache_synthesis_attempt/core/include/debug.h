@@ -3,18 +3,21 @@
 
 #include <iostream>
 
-void PrintDebugStatements(){
-	std::cout << "";
+void PrintDebugStatements()
+{
+    std::cout << "";
 }
 
-template<typename First, typename ... Strings> 
-void PrintDebugStatements(First arg, const Strings&... rest){
-	std::cout << arg;
-	PrintDebugStatements(rest...);
+template<typename First, typename ... Strings>
+void PrintDebugStatements(First arg, const Strings&... rest)
+{
+    std::cout << arg;
+    PrintDebugStatements(rest...);
 }
 
-void PrintNewLine(){
-	std::cout << std::endl;
+void PrintNewLine()
+{
+    std::cout << std::endl;
 }
 
 #endif

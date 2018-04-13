@@ -14,13 +14,13 @@
 // Main
 int main( )
 {
-	int results_data[DATA_SIZE];
+    int results_data[DATA_SIZE];
 
-  // Do the filter
-	int i;
-	CUSTOMX_R_R_R(0,i,0,0,0)
-   	median( DATA_SIZE, input_data, results_data );
-	CUSTOMX_R_R_R(0,i,0,0,0)
-	return verify(DATA_SIZE,results_data,verify_data);
+    // Do the filter
+    int i;
+    CUSTOMX_R_R_R(0,i,0,0,0)
+    median( DATA_SIZE, input_data, results_data );
+    CUSTOMX_R_R_R(0,i,0,0,0)
+    return verify(DATA_SIZE,results_data,verify_data);
 }
 

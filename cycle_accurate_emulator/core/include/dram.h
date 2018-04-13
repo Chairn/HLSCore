@@ -5,15 +5,16 @@
 #include <portability.h>
 #include <map>
 
-class Dram{
-	
-	private:
-		std::map<CORE_UINT(32),CORE_UINT(8)> memory;
+class Dram
+{
 
-	public:
-		
-		void setMemory(CORE_UINT(32) address, CORE_UINT(8) value);
-		CORE_UINT(8) getMemory(CORE_UINT(32) address);
+private:
+    std::map<CORE_UINT(32),CORE_UINT(8)> memory;
+
+public:
+
+    void setMemory(CORE_UINT(32) address, CORE_UINT(8) value);
+    CORE_UINT(8) getMemory(CORE_UINT(32) address);
 
 };
 

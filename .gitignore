@@ -1,0 +1,5 @@
+*.sim
+*.log
+*/testdir/*
+*/debug_output/*
+Catapult*
