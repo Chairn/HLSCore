@@ -120,7 +120,7 @@ public:
 
 CCS_MAIN(int argv, char **argc)
 {
-    char* binaryFile = "/udd/emascare/Work/Code/Main/merge/benchmarks/matrixmultiply.out";
+    char* binaryFile = "../benchmarks/build/matmul4_4.out";
     ElfFile elfFile(binaryFile);
     Simulator sim;
     int counter = 0;
@@ -161,8 +161,8 @@ CCS_MAIN(int argv, char **argc)
 
 
     sim.fillMemory();
-//    CORE_INT(32)* dm_in;
-//    dm_in = sim.getDataMemory();
+    //CORE_INT(32)* dm_in;
+    //dm_in = sim.getDataMemory();
     CORE_INT(32)* dm_out;
     CORE_INT(32)* debug_out;
     dm_out = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));

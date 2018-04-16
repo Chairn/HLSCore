@@ -614,6 +614,7 @@ void doWB(struct MemtoWB *memtoWB, CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_
     }
     WB_SYS_CALL()
 }
+
 #pragma SDS data zero_copy(dm[0:8192])
 void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],
             CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]) //, CORE_INT(32) debug_arr[200]){
