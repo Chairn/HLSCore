@@ -456,7 +456,6 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
 
 void do_Mem(ac_int<32, true> data_memory[8192], ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool& mem_bubble, bool& wb_bubble)
 {
-
     if(mem_bubble)
     {
         mem_bubble = 0;

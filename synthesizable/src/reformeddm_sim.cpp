@@ -9,6 +9,7 @@
 #include <map>
 #include <iostream>
 #include <string.h>
+#include "cache.h"
 #include "core.h"
 #include "portability.h"
 //#include "sds_lib.h"

@@ -9,6 +9,7 @@
 #define SET_SLC(low, value) range(low + value.length()-1,low) = value
 #else
 #include <ac_int.h>
+#include <ac_channel.h>
 #define CORE_UINT(param) ac_int<param, false>
 #define CORE_INT(param) ac_int<param, true>
 #define SLC(size,low) slc<size>(low)

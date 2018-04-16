@@ -61,3 +61,4 @@ void doStep(ac_int<32, false> pc, ac_int<32, true> ins_memory[8192], ac_int<32, 
 
 
 #endif  // CORE_H
+

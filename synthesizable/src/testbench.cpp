@@ -120,7 +120,7 @@ public:
 
 CCS_MAIN(int argv, char **argc)
 {
-    char* binaryFile = "/udd/emascare/Work/Code/Main/merge/benchmarks/matrixmultiply.out";
+    char* binaryFile = "../benchmarks/build/matmul4_4.out";
     ElfFile elfFile(binaryFile);
     Simulator sim;
     int counter = 0;
@@ -161,15 +161,17 @@ CCS_MAIN(int argv, char **argc)
 
 
     sim.fillMemory();
+
 //    ac_int<32, true>* dm_in;
 //    dm_in = sim.getDataMemory();
     ac_int<32, true>* dm_out;
     ac_int<32, true>* debug_out;
     dm_out = (ac_int<32, true> *)malloc(8192 * sizeof(ac_int<32, true>));
     debug_out = (ac_int<32, true> *)malloc(200 * sizeof(ac_int<32, true>));
-    int ins;
+
+    int ins = 123456789;
     //std::cin >> ins;
-    CCS_DESIGN(doStep(sim.getPC(),16925,sim.getInstructionMemory(),sim.getDataMemory(),dm_out));//,debug_out));
+    CCS_DESIGN(doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out));//,debug_out));
     for(int i = 0; i<32; i++)
     {
         std::cout << std::dec << i << " : ";
