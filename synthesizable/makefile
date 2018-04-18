@@ -8,7 +8,7 @@ VARS_VIV=-D__DEBUG__=1 -D__VIVADO__=1
 FILES=core.cpp elfFile.cpp reformeddm_sim.cpp syscall.cpp
 S=./src
 S_FILES=$(foreach f, $(FILES), $(S)/$f)
-HEADER=cache.h core.h debug.h elf.h elfFile.h portability.h registers.h riscvISA.h syscall.h DataMemory.h
+HEADER=cache.h core.h debug.h elf.h elfFile.h portability.h riscvISA.h syscall.h DataMemory.h
 I_HEADER=$(foreach f, $(HEADER), $(INC)/$f)
 
 catapult.sim: $(S_FILES) $(I_HEADER)

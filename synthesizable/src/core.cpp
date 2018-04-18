@@ -1,7 +1,7 @@
 /* vim: set ts=4 nu ai: */
 #include "riscvISA.h"
-#include "registers.h"
 #include "core.h"
+//#include "cache.h"
 #if defined(__SIMULATOR__) || defined(__DEBUG__)
 #include "debug.h"
 #include "syscall.h"
@@ -38,21 +38,9 @@
 #define nl()
 #endif
 
-#ifdef __VIVADO__
-#include "DataMemory.h"
-#define DO_MEM_PARAMETER DataMemory* data_memory
-#define MEM_SET(memory,address,value,op) memory->set(address,value,op)
-#define MEM_GET(memory,address,op,sign) memory->get(address,op,sign)
-#endif
+/*CORE_INT(32) Core::REG[32] = {0};
+CORE_UINT(2) Core::sys_status = 0;*/
 
-#ifdef __CATAPULT__
-#define DO_MEM_PARAMETER CORE_INT(32) data_memory[8192]
-#define MEM_SET(memory,address,value,op) memorySet(memory,address,value,op)
-#define MEM_GET(memory,address,op,sign) memoryGet(memory,address,op,sign)
-#endif
-
-CORE_INT(32) REG[32]; // Register file
-CORE_UINT(2) sys_status;
 
 void memorySet(CORE_INT(32) memory[8192], CORE_UINT(32) address, CORE_INT(32) value, CORE_UINT(2) op)
 {
@@ -132,7 +120,7 @@ CORE_INT(32) memoryGet(CORE_INT(32) memory[8192], CORE_UINT(32) address, CORE_UI
     return result;
 }
 
-CORE_INT(32) reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_INT(32) val)
+CORE_INT(32) Core::reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_INT(32) val)
 {
     CORE_INT(32) return_val = 0;
     switch(op)
@@ -147,9 +135,8 @@ CORE_INT(32) reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_INT(32)
     return return_val;
 }
 
-void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, struct ExtoMem extoMem, CORE_INT(32) ins_memory[8192], struct FtoDC *ftoDC, CORE_UINT(3) mem_lock)
+void Core::Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, ExtoMem extoMem, CORE_INT(32) ins_memory[8192], FtoDC *ftoDC, CORE_UINT(3) mem_lock)
 {
-
     CORE_UINT(32) next_pc;
     if(freeze_fetch)
     {
@@ -194,7 +181,7 @@ void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, struct ExtoMem extoMem, CO
 }
 
 
-void DC(struct FtoDC ftoDC, struct ExtoMem extoMem, struct MemtoWB memtoWB, struct DCtoEx *dctoEx, CORE_UINT(7) *prev_opCode,
+void Core::DC(FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB, DCtoEx *dctoEx, CORE_UINT(7) *prev_opCode,
         CORE_UINT(32) *prev_pc, CORE_UINT(3) mem_lock, CORE_UINT(1) *freeze_fetch, CORE_UINT(1) *ex_bubble)
 {
 
@@ -318,7 +305,7 @@ void DC(struct FtoDC ftoDC, struct ExtoMem extoMem, struct MemtoWB memtoWB, stru
 
 
 
-void Ex(struct DCtoEx dctoEx, struct ExtoMem *extoMem, CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status)
+void Core::Ex(DCtoEx dctoEx, ExtoMem *extoMem, CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status)
 {
 
     CORE_UINT(32) unsignedReg1;
@@ -345,7 +332,6 @@ void Ex(struct DCtoEx dctoEx, struct ExtoMem *extoMem, CORE_UINT(1) *ex_bubble, 
         extoMem->WBena = 0;
     }
 
-#pragma HLS mult=1, adder=1
     switch (dctoEx.opCode)
     {
     case RISCV_LUI:
@@ -508,8 +494,8 @@ void Ex(struct DCtoEx dctoEx, struct ExtoMem *extoMem, CORE_UINT(1) *ex_bubble, 
     *ex_bubble = 0;
 }
 
-void do_Mem(DO_MEM_PARAMETER, struct ExtoMem extoMem,
-            struct MemtoWB *memtoWB, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble)
+void Core::do_Mem(DO_MEM_PARAMETER, ExtoMem extoMem,
+            MemtoWB *memtoWB, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble)
 {
 
     if(*mem_bubble)
@@ -533,7 +519,7 @@ void do_Mem(DO_MEM_PARAMETER, struct ExtoMem extoMem,
         memtoWB->sys_status = extoMem.sys_status;
         memtoWB->opCode=extoMem.opCode;
         memtoWB->result = extoMem.result;
-        CORE_INT(32) result;
+        //CORE_UINT(32) result;
         CORE_UINT(2) st_op = 0;
         CORE_UINT(2) ld_op = 0;
         CORE_UINT(1) sign = 0;
@@ -606,7 +592,7 @@ void do_Mem(DO_MEM_PARAMETER, struct ExtoMem extoMem,
 }
 
 
-void doWB(struct MemtoWB *memtoWB, CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_exit)
+void Core::doWB(MemtoWB *memtoWB, CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_exit)
 {
     if (memtoWB->WBena == 1 && memtoWB->dest != 0)
     {
@@ -615,11 +601,20 @@ void doWB(struct MemtoWB *memtoWB, CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_
     WB_SYS_CALL()
 }
 
-#pragma SDS data zero_copy(dm[0:8192])
-void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],
-            CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]) //, CORE_INT(32) debug_arr[200]){
+Core::Core()
 {
+    for(int i = 0; i < 32; i++)
+    {
+        REG[i] = 0;
+    }
 
+    REG[2] = 0xf00000;
+    sys_status = 0;
+}
+
+#pragma SDS data zero_copy(dm[0:8192])
+void Core::doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192])
+{
     int i;
 
 #ifdef __VIVADO__
@@ -634,13 +629,13 @@ void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[819
     }
 #endif
 
-    struct MemtoWB memtoWB;
-    struct ExtoMem extoMem;
-    struct DCtoEx dctoEx;
-    struct FtoDC ftoDC;
+    MemtoWB memtoWB;
+    ExtoMem extoMem;
+    DCtoEx dctoEx;
+    FtoDC ftoDC;
 
-    CORE_UINT(32) n_inst=0;
-    CORE_UINT(7) prev_opCode=0;
+    CORE_UINT(32) n_inst = 0;
+    CORE_UINT(7) prev_opCode = 0;
     CORE_UINT(32) prev_pc = 0;
 
 #ifdef __DEBUG__
@@ -649,13 +644,13 @@ void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[819
 #endif
 
     CORE_UINT(32) ft_pc = 0;
-    memtoWB.WBena=0;
-    memtoWB.dest=0;
-    memtoWB.opCode=0;
-    extoMem.opCode=0;
+    memtoWB.WBena = 0;
+    memtoWB.dest = 0;
+    memtoWB.opCode = 0;
+    extoMem.opCode = 0;
     extoMem.sys_status = 0;
-    CORE_UINT(3) mem_lock=0;
-    dctoEx.opCode=0;
+    CORE_UINT(3) mem_lock = 0;
+    dctoEx.opCode = 0;
     CORE_UINT(1) early_exit = 0;
 
     dctoEx.dataa = 0; //First data from register file
@@ -669,19 +664,10 @@ void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[819
     CORE_UINT(1) mem_bubble = 0;
     CORE_UINT(1) wb_bubble = 0;
 
-    for(i = 0; i<32; i++)
-    {
-#pragma HLS PIPELINE
-        REG[i] = 0;
-    }
-
-    REG[2] = 0xf00000;
-    sys_status = 0;
-
 doStep_label1:
     while(n_inst < nbcycle)
     {
-#pragma HLS PIPELINE II=1
+HLS_PIPELINE(1)
 #ifdef __DEBUG__
         print_debug(n_inst, ";", std::hex, (int)pc, ";",	(int)ins_memory[(pc & 0x0FFFF)/4]," ");
 #endif
@@ -723,4 +709,11 @@ doStep_label1:
     }*/
 
     print_simulator_output("Successfully executed all instructions in ",n_inst," cycles");
+    nl();
+}
+
+void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192])
+{
+    Core core;
+    core.doStep(pc, nbcycle, ins_memory, dm, dm_out);
 }

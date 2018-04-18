@@ -1,8 +1,8 @@
 // See LICENSE for license details.
 
-//**************************************************************************
+// **************************************************************************
 // Vector-vector add benchmark
-//--------------------------------------------------------------------------
+// --------------------------------------------------------------------------
 //
 // This benchmark uses adds to vectors and writes the results to a
 // third vector. The input data (and reference data) should be

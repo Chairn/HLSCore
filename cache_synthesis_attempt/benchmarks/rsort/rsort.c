@@ -1,8 +1,8 @@
 // See LICENSE for license details.
 
-//**************************************************************************
+// **************************************************************************
 // Quicksort benchmark
-//--------------------------------------------------------------------------
+// --------------------------------------------------------------------------
 //
 // This benchmark uses quicksort to sort an array of integers. The
 // implementation is largely adapted from Numerical Recipes for C. The

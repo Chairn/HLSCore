@@ -172,19 +172,22 @@ int main()
     CORE_INT(32)* debug_out;
     dm_out = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
     debug_out = (CORE_INT(32) *)malloc(200 * sizeof(CORE_INT(32)));
-    int ins;
-    std::cin >> ins;
-    doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);
+    int ins = std::numeric_limits<int>::max();
+    //std::cin >> ins;
+
+    doCore(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);
+    /*Core core;
+    core.doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);*/
     /*for(int i = 0;i<34;i++){
     	std::cout << std::dec << i << " : ";
     	std::cout << std::hex << debug_out[i] << std::endl;
     }*/
-    std::cout << "dm" <<std::endl;
+    /*std::cout << "dm" <<std::endl;
     for(int i = 0; i<8192; i++)
     {
         std::cout << std::dec << i << " : ";
         std::cout << std::dec << dm_out[i] << std::endl;
-    }
+    }*/
     free(dm_out);
     free(debug_out);
     return 0;

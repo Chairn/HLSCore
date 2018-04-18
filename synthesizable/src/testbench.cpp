@@ -169,7 +169,7 @@ CCS_MAIN(int argv, char **argc)
     debug_out = (CORE_INT(32) *)malloc(200 * sizeof(CORE_INT(32)));
     int ins;
     //std::cin >> ins;
-    CCS_DESIGN(doStep(sim.getPC(),16925,sim.getInstructionMemory(),sim.getDataMemory(),dm_out));//,debug_out));
+    CCS_DESIGN(doCore(sim.getPC(),16925,sim.getInstructionMemory(),sim.getDataMemory(),dm_out));//,debug_out));
     for(int i = 0; i<32; i++)
     {
         std::cout << std::dec << i << " : ";

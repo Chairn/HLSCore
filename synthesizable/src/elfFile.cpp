@@ -28,7 +28,7 @@ char needToFixEndianness = 0;
  ******************************************  Code for class ElfFile  *****************************************
  *************************************************************************************************************/
 
-ElfFile::ElfFile(char* pathToElfFile)
+ElfFile::ElfFile(const char* pathToElfFile)
 {
 
     this->pathToElfFile = pathToElfFile;

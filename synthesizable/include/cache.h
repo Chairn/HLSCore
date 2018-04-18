@@ -38,7 +38,7 @@ public:
         CORE_UINT(32) datum;
     };
 
-    Cache(ac_channel<CORE_UINT(32)>& tc, ac_channel<CacheRequest>& fc)
+    explicit Cache(ac_channel<CORE_UINT(32)>& tc, ac_channel<CacheRequest>& fc)
     {
         assert(tagbits+indexbits+offsetbits == 32);
         //assert(Blocksize*ways == Size);
@@ -48,6 +48,10 @@ public:
         toCore = tc;
         fromCore = fc;
     }
+
+    // Cache is non copyable object
+    Cache(const Cache&) = delete;
+    void operator=(const Cache&) = delete;
 
     void cacheLoop()
     {
@@ -70,26 +74,26 @@ public:
                 }
                 else            //write
                 {
-                    write(request.address, request.datum);
+                    write(index, way, offset, request.dataSize, request.datum);
                     control[index][way].dirty = 1;
                 }
             }
             else    // not found or invalid data
             {
-                way = select(index);
+                way = select(index);    //select invalid data first
                 if(control[index][way].valid && control[index][way].dirty)
                     writeBack(index, way);
 
                 fetch(request.address, way);
                 if(request.RnW) //read
                 {
-                    CORE_UINT(32) value = read(request.address, way);
+                    CORE_UINT(32) value = read(index, way, offset, request.dataSize);
                     toCore.write(value);
                     control[index][way].dirty = 0;
                 }
                 else            //write
                 {
-                    write(request.address, request.datum);
+                    write(index, way, offset, request.dataSize, request.datum);
                     control[index][way].dirty = 1;
                 }
             }
@@ -123,7 +127,7 @@ private:
         CORE_UINT(1) dirty;
         CORE_UINT(1) found = 0;
 
-        #pragma hls_unroll yes
+        HLS_UNROLL(yes)
         findloop:for(int i = 0; i < Associativity; ++i)
         {
             if(control[index][i].tag == tag)
@@ -146,7 +150,7 @@ private:
         CORE_UINT(offsetbits) offset = getOffset(address);
         CORE_UINT(32) baseAddress = (address.SLC(tagbits+indexbits, offsetbits) << offsetbits) | 0;
 
-        #pragma hls_pipeline_init_interval 1
+        HLS_PIPELINE(1)
         fetchloop:for(int i = 0; i < Blocksize/4; ++i)
         {
             /*if(i == offset)
@@ -174,7 +178,7 @@ private:
         CORE_UINT(tagbits) tag = control[index][way].tag;
         CORE_UINT(32) baseAddress = (tag << (indexbits+offsetbits)) | (index << offsetbits) | 0;
 
-        #pragma hls_pipeline_init_interval 1
+        HLS_PIPELINE(1)
         writeBackloop:for(int i = 0; i < Blocksize/4; ++i)
         {
             dram[baseAddress | i] = data[index][way][i];
@@ -185,7 +189,24 @@ private:
 
     CORE_UINT(32) read(CORE_UINT(indexbits) index, CORE_UINT(waybits) way, CORE_UINT(offsetbits) offset, CORE_UINT(2) dataSize)
     {
-        CORE_UINT(32) value = data[index][way][offset];
+        // data is considered aligned
+        CORE_UINT(32) value = data[index][way][offset >> 2];
+
+        switch(offset.SLC(2,0))
+        {
+        case 0:
+            value >>= 0;
+            break;
+        case 1:
+            value >>= 8;
+            break;
+        case 2:
+            value >>= 16;
+            break;
+        case 3:
+            value >>= 24;
+            break;
+        }
         switch(dataSize)
         {
         case 0:
@@ -195,16 +216,59 @@ private:
             value &= 0x0000FFFF;
             break;
         case 2:
-            value &= 0x00FFFFFF;
+            value &= 0xFFFFFFFF;
+            break;
+        case 3:
+            value &= 0xFFFFFFFF;
             break;
         }
 
         return value;
     }
 
-    void write(CORE_UINT(indexbits) index, CORE_UINT(waybits) way, CORE_UINT(offsetbits) offset, CORE_UINT(32) datum)
+    void write(CORE_UINT(indexbits) index, CORE_UINT(waybits) way, CORE_UINT(offsetbits) offset, CORE_UINT(2) dataSize, CORE_UINT(32) datum)
     {
-        data[index][way][offset] = datum;
+        CORE_UINT(32) mem = data[index][way][offset >> 2];
+
+        switch(dataSize)
+        {
+        case 0:
+            switch(offset & 3)
+            {
+            case 0:
+                mem.SET_SLC(0, datum.SLC(8, 0));
+                //mem = (mem & 0xFFFFFF00) | (datum & 0x000000FF);
+                break;
+            case 1:
+                mem.SET_SLC(8, datum.SLC(8,8));
+                //mem = (mem & 0xFFFF00FF) | ((datum & 0x000000FF) << 8);
+                break;
+            case 2:
+                mem.SET_SLC(16, datum.SLC(8,16));
+                //mem = (mem & 0xFF00FFFF) | ((datum & 0x000000FF) << 16);
+                break;
+            case 3:
+                mem.SET_SLC(24, datum.SLC(8,24));
+                //mem = (mem & 0x00FFFFFF) | ((datum & 0x000000FF) << 24);
+                break;
+            }
+            break;
+        case 1:
+            if(offset & 2)
+                mem.SET_SLC(16, datum.SLC(16,16));
+                //mem = (mem & 0x0000FFFF) | ((datum & 0x0000FFFF) << 16);
+            else
+                mem.SET_SLC(0, datum.SLC(16,0));
+                //mem = (mem & 0xFFFF0000) | (datum & 0x0000FFFF);
+            break;
+        case 2:
+            mem = datum;
+            break;
+        case 3:
+            mem = datum;
+            break;
+        }
+        data[index][way][offset >> 2] = mem;
     }
 };
 
