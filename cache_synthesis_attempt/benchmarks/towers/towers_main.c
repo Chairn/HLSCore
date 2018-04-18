@@ -1,8 +1,8 @@
 // See LICENSE for license details.
 
-//**************************************************************************
+// **************************************************************************
 // Towers of Hanoi benchmark
-//--------------------------------------------------------------------------
+// --------------------------------------------------------------------------
 //
 // Towers of Hanoi is a classic puzzle problem. The game consists of
 // three pegs and a set of discs. Each disc is a different size, and

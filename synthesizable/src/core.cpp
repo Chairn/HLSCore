@@ -129,7 +129,6 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, ac_int<32, tr
     pc = control ? jump_pc : next_pc;
 }
 
-
 void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB, DCtoEx& dctoEx, ac_int<7, false>& prev_opCode,
         ac_int<32, false>& prev_pc, ac_int<3, false> mem_lock, bool& freeze_fetch, bool& ex_bubble)
 {
