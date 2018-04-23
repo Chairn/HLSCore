@@ -9,7 +9,6 @@
 #include <map>
 #include <iostream>
 #include <string.h>
-#include "cache.h"
 #include "core.h"
 #include "portability.h"
 //#include "sds_lib.h"
@@ -125,7 +124,7 @@ public:
 
 int main()
 {
-    char* binaryFile = "benchmarks/build/matmul4_4.out";
+    const char* binaryFile = "benchmarks/build/matmul4_4.out";
     ElfFile elfFile(binaryFile);
     Simulator sim;
     int counter = 0;
@@ -176,6 +175,11 @@ int main()
     //std::cin >> ins;
 
     doCore(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);
+    ac_channel<DCacheRequest> a;
+    ac_channel<CORE_UINT(32)> b;
+    ac_channel<DCacheRequest> c;
+    ac_channel<CORE_UINT(32)> d;
+    doCache(a,b,c,d);
     /*Core core;
     core.doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);*/
     /*for(int i = 0;i<34;i++){

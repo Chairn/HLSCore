@@ -2,6 +2,7 @@
 #define __CORE_H__
 
 #include "portability.h"
+#include "cache.h"
 
 #ifdef __VIVADO__
 #include "DataMemory.h"
@@ -16,14 +17,12 @@
 #define MEM_GET(memory,address,op,sign) memoryGet(memory,address,op,sign)
 #endif
 
-/*extern CORE_INT(32) REG[32]; // Register file
-extern CORE_UINT(2) sys_status;*/
-
 class Core
 {
 public:
     Core();
 
+    HLS_DESIGN(interface)
     void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
 
 private:
@@ -35,7 +34,7 @@ private:
     {
         CORE_UINT(32) pc;
         CORE_UINT(32) instruction; //Instruction to execute
-    };
+    } ftoDC;
 
     struct DCtoEx
     {
@@ -54,7 +53,7 @@ private:
         CORE_UINT(6) shamt;
         CORE_UINT(5) rs1;
         CORE_UINT(5) rs2;
-    };
+    } dctoEx;
 
     struct ExtoMem
     {
@@ -69,7 +68,7 @@ private:
         CORE_UINT(5) rs2;
         CORE_UINT(7) funct3;
         CORE_UINT(2) sys_status;
-    };
+    } extoMem;
 
     struct MemtoWB
     {
@@ -78,18 +77,18 @@ private:
         CORE_UINT(1) WBena; //Is a WB is needed ?
         CORE_UINT(7) opCode;
         CORE_UINT(2) sys_status;
-    };
+    } memtoWB;
 
     CORE_INT(32) reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_INT(32) val);
 
-    void doWB(MemtoWB *memtoWB, CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_exit);
-    void do_Mem(DO_MEM_PARAMETER, ExtoMem extoMem, MemtoWB *memtoWB, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble);
-    void Ex(DCtoEx dctoEx, ExtoMem *extoMem, CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status);
-    void DC(FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB, DCtoEx *dctoEx, CORE_UINT(7) *prev_opCode,
-            CORE_UINT(32) *prev_pc, CORE_UINT(3) mem_lock, CORE_UINT(1) *freeze_fetch, CORE_UINT(1) *ex_bubble);
-    void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, ExtoMem extoMem, CORE_INT(32) ins_memory[8192], FtoDC *ftoDC, CORE_UINT(3) mem_lock);
+    void doWB(CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_exit);
+    void do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble);
+    void Ex(CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status);
+    void DC(CORE_UINT(7) *prev_opCode, CORE_UINT(32) *prev_pc, CORE_UINT(3) mem_lock, CORE_UINT(1) *freeze_fetch, CORE_UINT(1) *ex_bubble);
+    void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, CORE_INT(32) ins_memory[8192], CORE_UINT(3) mem_lock);
 };
 
-void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
+void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192], CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
+void doCache(ac_channel<DCacheRequest>& a, ac_channel<CORE_UINT(32)>& b, ac_channel<DCacheRequest>& c, ac_channel<CORE_UINT(32)>& d);
 
 #endif  // __CORE_H__

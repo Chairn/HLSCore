@@ -146,7 +146,7 @@ CORE_UINT(32) doOpen(CORE_UINT(32) path, CORE_UINT(32) flags, CORE_UINT(32) mode
     char* localPath = (char*) malloc(pathSize*sizeof(char));
     for (int i=0; i<pathSize; i++)
         localPath[i] = ldb(path + i);
-    char* localMode;
+    const char* localMode;
     if (flags==0)
         localMode = "r";
     else if (flags == 577)
