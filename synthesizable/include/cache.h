@@ -87,6 +87,14 @@ CORE_UINT(waybits) select(CORE_UINT(indexbits) index)
     return 0;
 }
 
+template<int Size, int Blocksize, int Associativity, template<int, int, int > class Control>
+class BaseBase
+{
+protected:
+    CORE_UINT(32) data[sets][Associativity][Blocksize/4];
+    Control<Size, Blocksize, Associativity> control[sets];
+};
+
 template<int Size, int Blocksize, int Associativity, CacheReplacementPolicy Policy>
 class BaseCache
 {
@@ -300,7 +308,7 @@ public:
     HLS_DESIGN(interface)
     void run(ac_channel<DCacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, ac_channel<DCacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory)
     {
-        /*#ifndef __SYNTHESIS__
+        #ifndef __SYNTHESIS__
         while ( fromCore.available(1) )
         #endif
         {
@@ -342,7 +350,7 @@ public:
                     control[index].dirty[way] = 1;
                 }
             }
-        }*/
+        }
     }
 
 protected:
@@ -641,15 +649,14 @@ public:
     {}
 
     HLS_DESIGN(interface)
-    void run(ac_channel<DCacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore)//, ac_channel<DCacheRequest>& toMemory)//, ac_channel<CORE_UINT(32)>& fromMemory)
+    void run(ac_channel<DCacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, ac_channel<DCacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory)
     {
         #ifndef __SYNTHESIS__
         while ( fromCore.available(1) )
         #endif
         {
-            DCacheRequest request;
-            //if(fromCore.nb_read(request))     // blocking read, replace with non blocking
-            {CORE_UINT(tagbits) tag = getTag(request.address);
+            DCacheRequest request = fromCore.read();     // blocking read, replace with non blocking
+            CORE_UINT(tagbits) tag = getTag(request.address);
             CORE_UINT(indexbits) index = getIndex(request.address);
             CORE_UINT(offsetbits) offset = getOffset(request.address);
             CORE_UINT(32) baseAddress = 0;
@@ -659,7 +666,7 @@ public:
                 if(request.RnW) //read
                 {
                     CORE_UINT(32) value = read(index, offset, request.dataSize);
-                    //toCore.write(value);
+                    toCore.write(value);
                 }
                 else            //write
                 {
@@ -670,13 +677,13 @@ public:
             else   // not found or invalid data
             {
                 if(control[index].valid[0] && control[index].dirty[0]);
-                    //writeBack(toMemory, tag, index);
+                    writeBack(toMemory, tag, index);
 
-                //fetch(toMemory, fromMemory, request.address);
+                fetch(toMemory, fromMemory, request.address);
                 if(request.RnW) //read
                 {
                     CORE_UINT(32) value = read(index, offset, request.dataSize);
-                    //toCore.write(value);
+                    toCore.write(value);
                     control[index].dirty[0] = 0;
                 }
                 else            //write
@@ -684,7 +691,6 @@ public:
                     write(index, offset, request.dataSize, request.datum);
                     control[index].dirty[0] = 1;
                 }
-            }
             }
         }
     }

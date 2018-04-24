@@ -724,5 +724,6 @@ void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[819
 void doCache(ac_channel< DCacheRequest >& a, ac_channel< CORE_UINT(32) >& b, ac_channel< DCacheRequest >& c, ac_channel< CORE_UINT(32) >& d)
 {
     static DCache<8192, 32, 1, RANDOM> dcache;
-    dcache.run(a,b);//,c,d);
+    dcache.run(a,b,c,d);
+    //static BaseBase<8192,32,1,DCacheControl> test;
 }
