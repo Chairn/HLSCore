@@ -3,3 +3,6 @@
 */testdir/*
 */debug_output/*
 Catapult*
+*.ccs
+catapult/cache1ghz/*
+catapult/memories/*

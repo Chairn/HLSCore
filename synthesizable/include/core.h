@@ -23,7 +23,7 @@ public:
     Core();
 
     HLS_DESIGN(interface)
-    void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
+    void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192], CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
 
 private:
     CORE_INT(32) REG[32]; // Register file

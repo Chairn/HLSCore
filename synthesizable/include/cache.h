@@ -216,7 +216,11 @@ class ICache : public BaseCache<Size, Blocksize, Associativity, Policy>
     using BaseCache<Size, Blocksize, Associativity, Policy>::write;
 public:
     explicit ICache() : BaseCache<Size, Blocksize, Associativity, Policy>()
-    {}
+    {
+        for(int i = 0; i < sets; ++i)
+            for(int j = 0; j < Associativity; ++j)
+                control[i].valid[j] = 0;
+    }
 
     HLS_DESIGN(interface)
     void run(ac_channel<ICacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, ac_channel<ICacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory)
@@ -303,7 +307,11 @@ class DCache : public BaseCache<Size, Blocksize, Associativity, Policy>
     using BaseCache<Size, Blocksize, Associativity, Policy>::write;
 public:
     explicit DCache() : BaseCache<Size, Blocksize, Associativity, Policy>()
-    {}
+    {
+        for(int i = 0; i < sets; ++i)
+            for(int j = 0; j < Associativity; ++j)
+                control[i].valid[j] = 0;
+    }
 
     HLS_DESIGN(interface)
     void run(ac_channel<DCacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, ac_channel<DCacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory)
@@ -512,9 +520,9 @@ protected:
         return value;
     }
 
-    void write(CORE_UINT(indexbits) index, CORE_UINT(offsetbits) offset, CORE_UINT(2) dataSize, CORE_UINT(32) datum)
+    void write(CORE_UINT(indexbits) index, CORE_UINT(offsetbits) offset, CORE_UINT(2) dataSize, CORE_UINT(32) datum, CORE_UINT(32) mem)
     {
-        CORE_UINT(32) mem = data[index][offset >> 2];
+        //CORE_UINT(32) mem = data[index][offset >> 2];
 
         switch(dataSize)
         {
@@ -566,7 +574,10 @@ class ICache<Size, Blocksize, 1, Policy> : public BaseCache<Size, Blocksize, 1, 
     using BaseCache<Size, Blocksize, 1, Policy>::write;
 public:
     explicit ICache() : BaseCache<Size, Blocksize, 1, Policy>()
-    {}
+    {
+        for(int i = 0; i < sets; ++i)
+            control[i].valid[0] = 0;
+    }
 
     HLS_DESIGN(interface)
     void run(ac_channel<ICacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, ac_channel<ICacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory)
@@ -646,7 +657,10 @@ class DCache<Size, Blocksize, 1, Policy> : public BaseCache<Size, Blocksize, 1, 
     using BaseCache<Size, Blocksize, 1, Policy>::write;
 public:
     explicit DCache() : BaseCache<Size, Blocksize, 1, Policy>()
-    {}
+    {
+        for(int i = 0; i < sets; ++i)
+            control[i].valid[0] = 0;
+    }
 
     HLS_DESIGN(interface)
     void run(ac_channel<DCacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, ac_channel<DCacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory)
@@ -661,34 +675,39 @@ public:
             CORE_UINT(offsetbits) offset = getOffset(request.address);
             CORE_UINT(32) baseAddress = 0;
             baseAddress.SET_SLC(offsetbits, request.address.SLC(tagbits+indexbits, offsetbits));
-            if(find(request.address))
+
+            CORE_UINT(32) value;// = read(index, offset, request.dataSize);
+            CORE_UINT(tagbits) memtag;
+            bool valid, dirty;
+            load(index, offset, value, memtag, valid, dirty);
+
+            if(memtag == tag && valid)
             {
                 if(request.RnW) //read
                 {
-                    CORE_UINT(32) value = read(index, offset, request.dataSize);
+                    read(value, offset, request.dataSize);
                     toCore.write(value);
                 }
                 else            //write
                 {
-                    write(index, offset, request.dataSize, request.datum);
+                    write(index, offset, request.dataSize, request.datum, value);
                     control[index].dirty[0] = 1;
                 }
             }
             else   // not found or invalid data
             {
-                if(control[index].valid[0] && control[index].dirty[0]);
+                if(valid && dirty);
                     writeBack(toMemory, tag, index);
 
-                fetch(toMemory, fromMemory, request.address);
+                fetch(toMemory, fromMemory, request.address, value);
                 if(request.RnW) //read
                 {
-                    CORE_UINT(32) value = read(index, offset, request.dataSize);
                     toCore.write(value);
                     control[index].dirty[0] = 0;
                 }
                 else            //write
                 {
-                    write(index, offset, request.dataSize, request.datum);
+                    write(index, offset, request.dataSize, request.datum, value);
                     control[index].dirty[0] = 1;
                 }
             }
@@ -699,7 +718,15 @@ protected:
 //#pragma map to register? to sram? if sram, maybe merge with data(and make an array of struct)
     DCacheControl<Size, Blocksize, 1> control[sets];
 
-    void fetch(ac_channel<DCacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory, CORE_UINT(32) address)
+    void load(CORE_UINT(indexbits) index, CORE_UINT(offsetbits) offset, CORE_UINT(32)& value, CORE_UINT(tagbits)& tag, bool& valid, bool& dirty)
+    {
+        value = data[index][offset >> 2];
+        tag = control[index].tag[0];
+        valid = control[index].valid[0];
+        dirty = control[index].dirty[0];
+    }
+
+    void fetch(ac_channel<DCacheRequest>& toMemory, ac_channel<CORE_UINT(32)>& fromMemory, CORE_UINT(32) address, CORE_UINT(32)& value)
     {
         CORE_UINT(tagbits) tag = getTag(address);
         CORE_UINT(indexbits) index = getIndex(address);
@@ -715,7 +742,10 @@ protected:
             request.dataSize = DCacheRequest::FourBytes;
             request.datum = 0;
             toMemory.write(request);
-            data[index][i] = fromMemory.read();    //dram[baseAddress | i];
+            CORE_UINT(32) tmp = fromMemory.read();
+            data[index][i] = tmp;    //dram[baseAddress | i];
+            if(i == offset)
+                value = tmp;
         }
 
         control[index].tag[0] = tag;
@@ -739,6 +769,40 @@ protected:
 
 
         return found && valid;
+    }
+
+    void read(CORE_UINT(32)& value, CORE_UINT(offsetbits) offset, CORE_UINT(2) dataSize)
+    {
+        switch(offset & 3)  //offset.SLC(2,0) interprété comme opérateur < ....
+        {
+        case 0:
+            value >>= 0;
+            break;
+        case 1:
+            value >>= 8;
+            break;
+        case 2:
+            value >>= 16;
+            break;
+        case 3:
+            value >>= 24;
+            break;
+        }
+        switch(dataSize)
+        {
+        case 0:
+            value &= 0x000000FF;
+            break;
+        case 1:
+            value &= 0x0000FFFF;
+            break;
+        case 2:
+            value &= 0xFFFFFFFF;
+            break;
+        case 3:
+            value &= 0xFFFFFFFF;
+            break;
+        }
     }
 
     void writeBack(ac_channel<DCacheRequest>& toMemory, CORE_UINT(tagbits) tag, CORE_UINT(indexbits) index)
