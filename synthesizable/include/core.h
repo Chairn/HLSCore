@@ -24,6 +24,7 @@ class Core
 public:
     Core();
 
+    HLS_DESIGN(interface)
     void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
 
 private:
@@ -80,14 +81,18 @@ private:
         CORE_UINT(2) sys_status;
     };
 
+    FtoDC ftoDC;
+    DCtoEx dctoEx;
+    ExtoMem extoMem;
+    MemtoWB memtoWB;
+
     CORE_INT(32) reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_INT(32) val);
 
-    void doWB(MemtoWB *memtoWB, CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_exit);
-    void do_Mem(DO_MEM_PARAMETER, ExtoMem extoMem, MemtoWB *memtoWB, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble);
-    void Ex(DCtoEx dctoEx, ExtoMem *extoMem, CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status);
-    void DC(FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB, DCtoEx *dctoEx, CORE_UINT(7) *prev_opCode,
-            CORE_UINT(32) *prev_pc, CORE_UINT(3) mem_lock, CORE_UINT(1) *freeze_fetch, CORE_UINT(1) *ex_bubble);
-    void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, ExtoMem extoMem, CORE_INT(32) ins_memory[8192], FtoDC *ftoDC, CORE_UINT(3) mem_lock);
+    void doWB(CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_exit);
+    void do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble);
+    void Ex(CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status);
+    void DC(CORE_UINT(7) *prev_opCode, CORE_UINT(32) *prev_pc, CORE_UINT(3) mem_lock, CORE_UINT(1) *freeze_fetch, CORE_UINT(1) *ex_bubble);
+    void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, CORE_INT(32) ins_memory[8192], CORE_UINT(3) mem_lock);
 };
 
 void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192],CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);

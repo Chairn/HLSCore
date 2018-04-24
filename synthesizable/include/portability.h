@@ -26,7 +26,7 @@
 #define HLS_PIPELINE(param) _Pragma(STRINGIFY(hls_pipeline_init_interval param))
 #define HLS_UNROLL(param)   _Pragma(STRINGIFY(hls_unroll param))
 #define HLS_TOP(param)      _Pragma(STRINGIFY(hls_design top))
-#define HLS_DESIGN          _Pragma(STRINGIFY(hls_design))
+#define HLS_DESIGN(param)   _Pragma(STRINGIFY(hls_design param))
 
 #endif
 
