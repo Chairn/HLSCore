@@ -721,9 +721,9 @@ void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[819
     core.doStep(pc, nbcycle, ins_memory, dm, dm_out);
 }
 
-void doCache(ac_channel< DCacheRequest >& a, ac_channel< CORE_UINT(32) >& b, ac_channel< DCacheRequest >& c, ac_channel< CORE_UINT(32) >& d)
+void doCache(ac_channel< DCacheRequest >& a, ac_channel< CORE_UINT(32) >& b, CORE_UINT(32) d[DRAM_SIZE])
 {
     static DCache<8192, 32, 1, RANDOM> dcache;
-    dcache.run(a,b,c,d);
+    dcache.run(a,b,d);
     //static BaseBase<8192,32,1,DCacheControl> test;
 }

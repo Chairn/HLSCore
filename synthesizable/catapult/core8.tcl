@@ -15,7 +15,6 @@
 //  
 solution new -state initial
 solution options defaults
-solution options set /Project/ProjectNamePrefix cache1ghz
 solution options set /Input/CompilerFlags {-D __CATAPULT__=1}
 solution options set /Input/SearchPath ../include
 flow package require /SCVerify
@@ -28,7 +27,7 @@ directive set -DESIGN_GOAL area
 directive set -OLD_SCHED false
 directive set -SPECULATE true
 directive set -MERGEABLE true
-directive set -REGISTER_THRESHOLD 4096
+directive set -REGISTER_THRESHOLD 256
 directive set -MEM_MAP_THRESHOLD 32
 directive set -FSM_ENCODING none
 directive set -REG_MAX_FANOUT 0
@@ -49,25 +48,23 @@ directive set -TRANSACTION_SYNC ready
 directive set -DATA_SYNC none
 directive set -RESET_CLEARS_ALL_REGS true
 directive set -CLOCK_OVERHEAD 20.000000
-//directive set -OPT_CONST_MULTS use_library
 directive set -CHARACTERIZE_ROM false
 directive set -PROTOTYPE_ROM true
 directive set -ROM_THRESHOLD 64
-//directive set -CLUSTER_ADDTREE_IN_COUNT_THRESHOLD 0
 directive set -CLUSTER_OPT_CONSTANT_INPUTS true
 directive set -CLUSTER_RTL_SYN false
 directive set -CLUSTER_FAST_MODE false
 directive set -CLUSTER_TYPE combinational
 directive set -COMPGRADE fast
-directive set -DESIGN_HIERARCHY doCache
+directive set -DESIGN_HIERARCHY doCore
 go analyze
 solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/synthesizable/catapult/memories/ -append
 solution library add C28SOI_SC_12_CORE_LL_ccs -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {28nm FDSOI}
 solution library add ST_singleport_8192x32
-solution library add ram_sample-065nm-singleport_beh_dc
 go libraries
-directive set -CLOCKS {clk {-CLOCK_PERIOD 2 -CLOCK_EDGE rising -CLOCK_HIGH_TIME 1 -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {} -ENABLE_ACTIVE high}}
+directive set -CLOCKS {clk {-CLOCK_PERIOD 1.66 -CLOCK_EDGE rising -CLOCK_UNCERTAINTY 0.0 -CLOCK_HIGH_TIME 0.83 -RESET_SYNC_NAME rst -RESET_ASYNC_NAME arst_n -RESET_KIND sync -RESET_SYNC_ACTIVE high -RESET_ASYNC_ACTIVE low -ENABLE_ACTIVE high}}
 go assembly
-directive set /doCache/core/dcache.control.vdt:rsc -MAP_TO_MODULE {[Register]}
+directive set /doCore/core.REG:rsc -MAP_TO_MODULE {[Register]}
+directive set /doCore/core/main/doStep_label1 -PIPELINE_INIT_INTERVAL 1
 go architect
 go extract

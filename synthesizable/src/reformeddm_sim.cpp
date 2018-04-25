@@ -177,9 +177,8 @@ int main()
     doCore(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);
     ac_channel<DCacheRequest> a;
     ac_channel<CORE_UINT(32)> b;
-    ac_channel<DCacheRequest> c;
-    ac_channel<CORE_UINT(32)> d;
-    doCache(a,b,c,d);
+    CORE_UINT(32) d[DRAM_SIZE];
+    doCache(a,b,d);
     /*Core core;
     core.doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);*/
     /*for(int i = 0;i<34;i++){

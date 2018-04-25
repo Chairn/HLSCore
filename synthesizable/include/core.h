@@ -89,6 +89,6 @@ private:
 };
 
 void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192], CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
-void doCache(ac_channel<DCacheRequest>& a, ac_channel<CORE_UINT(32)>& b, ac_channel<DCacheRequest>& c, ac_channel<CORE_UINT(32)>& d);
+void doCache(ac_channel<DCacheRequest>& a, ac_channel<CORE_UINT(32)>& b, CORE_UINT(32) memory[1000000]);
 
 #endif  // __CORE_H__

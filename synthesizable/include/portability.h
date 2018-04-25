@@ -22,7 +22,7 @@
 #define FIFO(param)         ac_channel< param >
 #define CORE_UINT(param)    ac_int<param, false>
 #define CORE_INT(param)     ac_int<param, true>
-#define SLC(size,low)       slc<size>(low)
+#define SLC(size,low)       template slc<size>(low)
 #define SET_SLC(low, value) set_slc(low, value)
 
 #define HLS_PIPELINE(param) _Pragma(STRINGIFY(hls_pipeline_init_interval param))
@@ -33,6 +33,6 @@
 #endif
 
 #define DRAM_WIDTH 32
-#define DRAM_SIZE 100000000
+#define DRAM_SIZE 1000000
 
 #endif /* For PORTABILITY_H_ */

@@ -65,7 +65,6 @@ solution library add ST_singleport_8192x32
 go libraries
 directive set -CLOCKS {clk {-CLOCK_PERIOD 1.66 -CLOCK_EDGE rising -CLOCK_UNCERTAINTY 0.0 -CLOCK_HIGH_TIME 0.83 -RESET_SYNC_NAME rst -RESET_ASYNC_NAME arst_n -RESET_KIND sync -RESET_SYNC_ACTIVE high -RESET_ASYNC_ACTIVE low -ENABLE_ACTIVE high}}
 go assembly
-//directive set /doCore/core.REG:rsc -MAP_TO_MODULE {[Register]}
-//directive set /doCore/core/main/doStep_label1 -PIPELINE_INIT_INTERVAL 1
+directive set /doCache/core/dcache.control.vdt:rsc -MAP_TO_MODULE {[Register]}
 go architect
 go extract
