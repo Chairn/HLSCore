@@ -33,6 +33,6 @@
 #endif
 
 #define DRAM_WIDTH 32
-#define DRAM_SIZE 1000000
+#define DRAM_SIZE 8192
 
 #endif /* For PORTABILITY_H_ */
