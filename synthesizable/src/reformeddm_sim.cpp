@@ -34,13 +34,13 @@ private:
     CORE_UINT(32) pc;
 
 public:
-    CORE_INT(32)* ins_memory;
-    CORE_INT(32)* data_memory;
+    CORE_UINT(32)* ins_memory;
+    CORE_UINT(32)* data_memory;
 
     Simulator()
     {
-        ins_memory = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
-        data_memory = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
+        ins_memory = (CORE_UINT(32) *)malloc(8192 * sizeof(CORE_UINT(32)));
+        data_memory = (CORE_UINT(32) *)malloc(8192 * sizeof(CORE_UINT(32)));
         for(int i =0; i<8192; i++)
         {
             ins_memory[i]=0;
@@ -98,13 +98,13 @@ public:
         data_memorymap[addr] = value;
     }
 
-    CORE_INT(32)* getInstructionMemory()
+    CORE_UINT(32)* getInstructionMemory()
     {
         return ins_memory;
     }
 
 
-    CORE_INT(32)* getDataMemory()
+    CORE_UINT(32)* getDataMemory()
     {
         return data_memory;
     }
@@ -174,11 +174,14 @@ int main()
     int ins = std::numeric_limits<int>::max();
     //std::cin >> ins;
 
-    doCore(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);
-    ac_channel<DCacheRequest> a;
-    ac_channel<CORE_UINT(32)> b;
-    CORE_UINT(32) d[DRAM_SIZE];
-    doCache(a,b,d);
+    //doCachedCore(sim.getPC(), ins, sim.getInstructionMemory(), sim.getDataMemory());
+
+    FIFO(ICacheRequest) toICache;
+    FIFO(CORE_UINT(32)) fromICache;
+    FIFO(DCacheRequest) toDCache;
+    FIFO(CORE_UINT(32)) fromDCache;
+    doCore(sim.getPC(), ins, toICache, fromICache, toDCache, fromDCache);
+
     /*Core core;
     core.doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);*/
     /*for(int i = 0;i<34;i++){

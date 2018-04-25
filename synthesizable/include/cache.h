@@ -106,7 +106,7 @@ public:
     void operator=(const ICache&) = delete;
 
     HLS_DESIGN(interface)
-    void run(ac_channel<ICacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, CORE_UINT(32) memory[DRAM_SIZE])
+    void run(FIFO(ICacheRequest)& fromCore, FIFO(CORE_UINT(32))& toCore, CORE_UINT(32) memory[DRAM_SIZE])
     {
         #ifndef __SYNTHESIS__
         while ( fromCore.available(1) )
@@ -200,7 +200,7 @@ public:
     }
 
     HLS_DESIGN(interface)
-    void run(ac_channel<DCacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, CORE_UINT(32) memory[DRAM_SIZE])
+    void run(FIFO(DCacheRequest)& fromCore, FIFO(CORE_UINT(32))& toCore, CORE_UINT(32) memory[DRAM_SIZE])
     {
         #ifndef __SYNTHESIS__
         while ( fromCore.available(1) )
@@ -249,7 +249,7 @@ public:
                 {
                     write(index, way, offset, request.dataSize, value, request.datum);
                 }
-                controlwriteback.SET_SLC(tagbits, ~request.RnW);
+                controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))!request.RnW);
             }
             // update policy bits with controlwriteback
             control[index].vdt[way] = controlwriteback;
@@ -414,6 +414,94 @@ private:
 #define getOffset(address)  (address.SLC(offsetbits, 0))
 
 template<int Size, int Blocksize, CacheReplacementPolicy Policy>
+class ICache<Size, Blocksize, 1, Policy>
+{
+public:
+    explicit ICache()
+    {
+        assert(Blocksize % 4 == 0);
+        assert(Blocksize > 0);
+        assert(Size % 4 == 0);
+        assert(Size > 0);
+        assert(tagbits + indexbits + offsetbits == 32);
+
+        for(int i = 0; i < sets; ++i)
+            control[i].tagvalid[0] = 0;
+    }
+
+    // Cache is non copyable object
+    ICache(const ICache&) = delete;
+    void operator=(const ICache&) = delete;
+
+    HLS_DESIGN(interface)
+    void run(FIFO(ICacheRequest)& fromCore, FIFO(CORE_UINT(32))& toCore, CORE_UINT(32) memory[DRAM_SIZE])
+    {
+        #ifndef __SYNTHESIS__
+        while ( fromCore.available(1) )
+        #endif
+        {
+            ICacheRequest request = fromCore.read();     // blocking read, replace with non blocking ?
+            CORE_UINT(tagbits) tag = getTag(request.address);
+            CORE_UINT(indexbits) index = getIndex(request.address);
+            CORE_UINT(offsetbits) offset = getOffset(request.address);
+
+            CORE_UINT(32) value;
+            CORE_UINT(1) valid;
+
+            if(find(tag, index, offset, valid))
+            {
+                value = data[index][0][offset >> 2];
+                toCore.write(value);
+            }
+            else    // not found or invalid data
+            {
+                fetch(tag, index, offset, value, memory);
+                toCore.write(value);
+            }
+            // update policy bits
+        }
+    }
+
+private:
+//#pragma map to sram
+    CORE_UINT(32) data[sets][1][Blocksize/4];
+    ICacheControl<tagbits, 1> control[sets];
+
+    CORE_UINT(1) find(CORE_UINT(tagbits) tag, CORE_UINT(indexbits) index, CORE_UINT(offsetbits) offset, CORE_UINT(1)& valid)
+    {
+        CORE_UINT(1) found = 0;
+
+        CORE_UINT(tagbits+1) _tag = control[index].tagvalid[0];
+        if((_tag.SLC(tagbits, 0)) == tag)
+        {
+            valid = _tag.SLC(1, tagbits);
+            found = 1;
+            //break;
+        }
+
+        return found && valid;
+    }
+
+    void fetch(CORE_UINT(tagbits) tag, CORE_UINT(indexbits) index, CORE_UINT(offsetbits) offset, CORE_UINT(32)& value, CORE_UINT(32) memory[DRAM_SIZE])
+    {
+        CORE_UINT(32) baseAddress = (tag << (indexbits+offsetbits)) | (index << offsetbits);
+        CORE_UINT(32) address = (tag << (indexbits+offsetbits)) | (index << offsetbits) | offset;
+
+        HLS_PIPELINE(1)
+        fetchloop:for(int i = 0; i < Blocksize/4; ++i)
+        {
+            CORE_UINT(32) tmp = memory[baseAddress | i];
+            data[index][0][i] = tmp;
+            if(baseAddress | i == address)
+                value = tmp;
+        }
+
+        control[index].tagvalid[0] = (1 << tagbits) | tag;
+    }
+};
+
+
+template<int Size, int Blocksize, CacheReplacementPolicy Policy>
 class DCache<Size, Blocksize, 1, Policy>
 {
 public:
@@ -430,7 +518,7 @@ public:
     }
 
     HLS_DESIGN(interface)
-    void run(ac_channel<DCacheRequest>& fromCore, ac_channel<CORE_UINT(32)>& toCore, CORE_UINT(32) memory[DRAM_SIZE])
+    void run(FIFO(DCacheRequest)& fromCore, FIFO(CORE_UINT(32))& toCore, CORE_UINT(32) memory[DRAM_SIZE])
     {
         #ifndef __SYNTHESIS__
         while ( fromCore.available(1) )
@@ -459,7 +547,7 @@ public:
                 else            //write
                 {
                     write(index, offset, request.dataSize, value, request.datum);
-                    controlwriteback.SET_SLC(tagbits, (ac_int<1, false>)1);
+                    controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))1);
                 }
             }
             else    // not found or invalid data
@@ -477,7 +565,7 @@ public:
                 {
                     write(index, offset, request.dataSize, value, request.datum);
                 }
-                controlwriteback.SET_SLC(tagbits, ~request.RnW);
+                controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))request.RnW);
             }
             // update policy bits with controlwriteback
             control[index].vdt[0] = controlwriteback;

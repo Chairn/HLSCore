@@ -4,26 +4,13 @@
 #include "portability.h"
 #include "cache.h"
 
-#ifdef __VIVADO__
-#include "DataMemory.h"
-#define DO_MEM_PARAMETER DataMemory* data_memory
-#define MEM_SET(memory,address,value,op) memory->set(address,value,op)
-#define MEM_GET(memory,address,op,sign) memory->get(address,op,sign)
-#endif
-
-#ifdef __CATAPULT__
-#define DO_MEM_PARAMETER CORE_INT(32) data_memory[DRAM_SIZE]
-#define MEM_SET(memory,address,value,op) memorySet(memory,address,value,op)
-#define MEM_GET(memory,address,op,sign) memoryGet(memory,address,op,sign)
-#endif
-
 class Core
 {
 public:
     Core();
 
     HLS_DESIGN(interface)
-    void doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192], CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
+    void doCachedStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache);
 
 private:
     CORE_INT(32) REG[32]; // Register file
@@ -82,13 +69,38 @@ private:
     CORE_INT(32) reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_INT(32) val);
 
     void doWB(CORE_UINT(1) *wb_bubble, CORE_UINT(1) *early_exit);
-    void do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble);
+    void do_Mem(FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble);
     void Ex(CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status);
     void DC(CORE_UINT(7) *prev_opCode, CORE_UINT(32) *prev_pc, CORE_UINT(3) mem_lock, CORE_UINT(1) *freeze_fetch, CORE_UINT(1) *ex_bubble);
-    void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, CORE_INT(32) ins_memory[8192], CORE_UINT(3) mem_lock);
+    void Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, CORE_UINT(3) mem_lock);
 };
 
-void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192], CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192]);
+template<int Size, int Blocksize, int Associativity, CacheReplacementPolicy Policy>
+class CachedCore
+{
+public:
+    CachedCore()
+    {}
+
+    HLS_DESIGN(interface)
+    void run(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_UINT(32) ins_memory[DRAM_SIZE], CORE_UINT(32) dm[DRAM_SIZE])
+    {
+        core.doCachedStep(pc, nbcycle, fromCoretoICache, fromICachetoCore, fromCoretoDCache, fromDCachetoCore);
+        dcache.run(fromCoretoDCache, fromDCachetoCore, dm);
+        icache.run(fromCoretoICache, fromICachetoCore, ins_memory);
+    }
+private:
+    Core core;
+    DCache<Size, Blocksize, Associativity, Policy> dcache;
+    ICache<Size, Blocksize, Associativity, Policy> icache;
+    FIFO(DCacheRequest) fromCoretoDCache;
+    FIFO(ICacheRequest) fromCoretoICache;
+    FIFO(CORE_UINT(32)) fromDCachetoCore;
+    FIFO(CORE_UINT(32)) fromICachetoCore;
+};
+
+void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache);
+void doCachedCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_UINT(32) ins_memory[8192], CORE_UINT(32) dm[8192]);
 void doCache(ac_channel<DCacheRequest>& a, ac_channel<CORE_UINT(32)>& b, CORE_UINT(32) memory[1000000]);
 
 #endif  // __CORE_H__

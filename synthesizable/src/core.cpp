@@ -1,7 +1,7 @@
 /* vim: set ts=4 nu ai: */
 #include "riscvISA.h"
 #include "core.h"
-//#include "cache.h"
+#include "cache.h"
 #if defined(__SIMULATOR__) || defined(__DEBUG__)
 #include "debug.h"
 #include "syscall.h"
@@ -38,94 +38,43 @@
 #define nl()
 #endif
 
-/*template<int Size, int Blocksize, int Associativity, CACHE_REPLACEMENT_POLICY Policy>
-void memorySet(Cache<Size, Blocksize, Associativity, Policy> cache, CORE_UINT(32) address, CORE_INT(32) value, CORE_UINT(2) op)
+void memorySet(FIFO(DCacheRequest)& toDCache, CORE_UINT(32) address, CORE_INT(32) value, CORE_UINT(2) op)
 {
-
+    DCacheRequest request;
+    request.address = address;
+    request.dataSize = op;
+    request.datum = value;
+    request.RnW = DCacheRequest::WRITE;
+    toDCache.write(request);
 }
 
-template<int Size, int Blocksize, int Associativity, CACHE_REPLACEMENT_POLICY Policy>
-CORE_INT(32) memoryGet(Cache<Size, Blocksize, Associativity, Policy> cache, CORE_UINT(32) address, CORE_UINT(2) op, CORE_UINT(1) sign)
+CORE_INT(32) memoryGet(FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache, CORE_UINT(32) address, CORE_UINT(2) op, CORE_UINT(1) sign)
 {
+    DCacheRequest request;
+    request.address = address;
+    request.dataSize = op;
+    request.RnW = DCacheRequest::READ;
+    toDCache.write(request);
 
-}*/
+    CORE_INT(32) value;
+    value.SET_SLC(0,fromDCache.read());
 
-void memorySet(CORE_INT(32) memory[8192], CORE_UINT(32) address, CORE_INT(32) value, CORE_UINT(2) op)
-{
-    CORE_UINT(13) wrapped_address = address % 8192;
-    CORE_INT(32) byte0 = value.SLC(8,0);
-    CORE_INT(32) byte1 = value.SLC(8,8);
-    CORE_INT(32) byte2 = value.SLC(8,16);
-    CORE_INT(32) byte3 = value.SLC(8,24);
-    CORE_UINT(2) offset = wrapped_address & 0x3;
-    CORE_UINT(13) location = wrapped_address >> 2;
-    /*this wont synthesize in catapult */
-#ifdef __SIMULATOR__
-    //first read existing value
-    CORE_INT(32) memory_val = memory[location];
-    CORE_INT(32) shifted_byte;
-    CORE_INT(32) mask[4];
-    mask[0] = 0xFFFFFF00;
-    mask[1] = 0xFFFF00FF;
-    mask[2] = 0xFF00FFFF;
-    mask[3] = 0x00FFFFFF;
-    CORE_INT(32) val_to_be_written;
-    val_to_be_written = (memory_val & mask[offset]) | (byte0 << (offset*8));
-    if(op & 1)
+    if(sign)
     {
-        val_to_be_written = (val_to_be_written & mask[offset+1]) | (byte1 << ((offset+1)*8));
+        switch(op)  // sign extend
+        {
+        case 0:
+            if(value[7])
+                value |= 0xFFFFFF00;
+            break;
+        case 1:
+            if(value[15])
+                value |= 0xFFFF0000;
+            break;
+        }
     }
-    if(op & 2)
-    {
-        val_to_be_written = value;
-    }
-    memory[location] = val_to_be_written;
-#endif
-    /*this will synthesize in catapult */
-#ifdef __CATAPULT__
-    memory[location] = value;
-#endif
-}
 
-CORE_INT(32) memoryGet(CORE_INT(32) memory[8192], CORE_UINT(32) address, CORE_UINT(2) op, CORE_UINT(1) sign)
-{
-    CORE_UINT(13) wrapped_address = address % 8192;
-    CORE_UINT(2) offset = wrapped_address & 0x3;
-    CORE_UINT(13) location = wrapped_address >> 2;
-    CORE_INT(32) result;
-    result = sign ? -1 : 0;
-    CORE_INT(32) mem_read = memory[location];
-    CORE_INT(8) byte0 = mem_read.SLC(8,0);
-    CORE_INT(8) byte1 = mem_read.SLC(8,8);
-    CORE_INT(8) byte2 = mem_read.SLC(8,16);
-    CORE_INT(8) byte3 = mem_read.SLC(8,24);
-
-    switch(offset)
-    {
-    case 0:
-        break;
-    case 1:
-        byte0 = byte1;
-        break;
-    case 2:
-        byte0 = byte1;
-        byte1 = byte3;
-        break;
-    case 3:
-        byte0 = byte3;
-        break;
-    }
-    result.SET_SLC(0,byte0);
-    if(op & 1)
-    {
-        result.SET_SLC(8,byte1);
-    }
-    if(op & 2)
-    {
-        result.SET_SLC(16,byte2);
-        result.SET_SLC(24,byte3);
-    }
-    return result;
+    return value;
 }
 
 CORE_INT(32) Core::reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_INT(32) val)
@@ -143,7 +92,7 @@ CORE_INT(32) Core::reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_I
     return return_val;
 }
 
-void Core::Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, CORE_INT(32) ins_memory[8192], CORE_UINT(3) mem_lock)
+void Core::Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, CORE_UINT(3) mem_lock)
 {
     CORE_UINT(32) next_pc;
     if(freeze_fetch)
@@ -181,8 +130,11 @@ void Core::Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, CORE_INT(32) ins_mem
     }
     if(!freeze_fetch)
     {
-        (ftoDC.instruction).SET_SLC(0, ins_memory[(*pc & 0x0FFFF)/4]);
-        ftoDC.pc=*pc;
+        ICacheRequest request;
+        request.address = (*pc & 0xFFFF) >> 2;
+        toICache.write(request);
+        ftoDC.instruction = fromICache.read();
+        ftoDC.pc = *pc;
         //debugger->set(debugger_index,ftoDC->pc,15);
     }
     *pc = control ? jump_pc : next_pc;
@@ -313,7 +265,6 @@ void Core::DC(CORE_UINT(7) *prev_opCode, CORE_UINT(32) *prev_pc, CORE_UINT(3) me
 
 void Core::Ex(CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *sys_status)
 {
-
     CORE_UINT(32) unsignedReg1;
     unsignedReg1.SET_SLC(0,(dctoEx.dataa).SLC(32,0));
     CORE_UINT(32) unsignedReg2;
@@ -323,11 +274,11 @@ void Core::Ex(CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *s
     CORE_INT(66) longResult;
     CORE_INT(33) srli_reg;
     CORE_INT(33) srli_result;                   // Execution of the Instruction in EX stage
-    extoMem.opCode= dctoEx.opCode;
-    extoMem.dest=dctoEx.dest;
-    extoMem.datac= dctoEx.datac;
-    extoMem.funct3= dctoEx.funct3;
-    extoMem.datad= dctoEx.datad;
+    extoMem.opCode = dctoEx.opCode;
+    extoMem.dest = dctoEx.dest;
+    extoMem.datac = dctoEx.datac;
+    extoMem.funct3 = dctoEx.funct3;
+    extoMem.datad = dctoEx.datad;
     extoMem.sys_status = 0;
     if ((extoMem.opCode != RISCV_BR) && (extoMem.opCode != RISCV_ST))
     {
@@ -500,7 +451,7 @@ void Core::Ex(CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *s
     *ex_bubble = 0;
 }
 
-void Core::do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble)
+void Core::do_Mem(FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble)
 {
 
     if(*mem_bubble)
@@ -522,7 +473,7 @@ void Core::do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bu
         }
 
         memtoWB.sys_status = extoMem.sys_status;
-        memtoWB.opCode=extoMem.opCode;
+        memtoWB.opCode = extoMem.opCode;
         memtoWB.result = extoMem.result;
         //CORE_UINT(32) result;
         CORE_UINT(2) st_op = 0;
@@ -553,7 +504,7 @@ void Core::do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bu
                 switch(extoMem.funct3)
                 {
                 case RISCV_LD_LW:
-                    ld_op = 3;
+                    ld_op = 2;
                     sign = 1;
                     break;
                 case RISCV_LD_LH:
@@ -569,17 +520,17 @@ void Core::do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bu
                     sign = 1;
                     break;
                 case RISCV_LD_LBU:
-                    ld_op = 1;
+                    ld_op = 0;
                     sign = 0;
                     break;
                 }
-                memtoWB.result = MEM_GET(data_memory,memtoWB.result,ld_op,sign);
+                memtoWB.result = memoryGet(toDCache, fromDCache, memtoWB.result, ld_op, sign);
                 break;
             case RISCV_ST:
                 switch(extoMem.funct3)
                 {
                 case RISCV_ST_STW:
-                    st_op = 3;
+                    st_op = 2;
                     break;
                 case RISCV_ST_STH:
                     st_op = 1;
@@ -588,7 +539,7 @@ void Core::do_Mem(DO_MEM_PARAMETER, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bu
                     st_op = 0;
                     break;
                 }
-                MEM_SET(data_memory,memtoWB.result,extoMem.datac,st_op);
+                memorySet(toDCache, memtoWB.result, extoMem.datac, st_op);
                 //data_memory[(memtoWB.result/4)%8192] = extoMem.datac;
                 break;
             }
@@ -628,22 +579,9 @@ Core::Core()
     dctoEx.dest = 0; //Register to be written
 }
 
-#pragma SDS data zero_copy(dm[0:8192])
-void Core::doStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192], CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192])
+void Core::doCachedStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache)
 {
     int i;
-
-#ifdef __VIVADO__
-    DataMemory data_memory;
-    for(i = 0; i<8192; i++)
-    {
-#pragma HLS PIPELINE
-        data_memory.memory[i][0]=dm[i].SLC(8,0);
-        data_memory.memory[i][1]=dm[i].SLC(8,8);
-        data_memory.memory[i][2]=dm[i].SLC(8,16);
-        data_memory.memory[i][3]=dm[i].SLC(8,24);
-    }
-#endif
 
     CORE_UINT(32) n_inst = 0;
     CORE_UINT(7) prev_opCode = 0;
@@ -671,18 +609,13 @@ doStep_label1:
     while(n_inst < nbcycle)
     {
 HLS_PIPELINE(1)
-#ifdef __DEBUG__
-        print_debug(n_inst, ";", std::hex, (int)pc, ";",	(int)ins_memory[(pc & 0x0FFFF)/4]," ");
-#endif
+
         doWB(&wb_bubble, &early_exit);
-#ifdef __VIVADO__
-        do_Mem(&data_memory, extoMem, &memtoWB, &mem_lock, &mem_bubble, &wb_bubble);
-#else
-        do_Mem(dm, &mem_lock, &mem_bubble, &wb_bubble);
-#endif
+
+        do_Mem(toDCache, fromDCache, &mem_lock, &mem_bubble, &wb_bubble);
         Ex(&ex_bubble, &mem_bubble, &sys_status);
         DC(&prev_opCode, &prev_pc, mem_lock, &freeze_fetch, &ex_bubble);
-        Ft(&pc,freeze_fetch, ins_memory, mem_lock);
+        Ft(&pc, freeze_fetch, toICache, fromICache, mem_lock);
         n_inst++;
 #ifdef __DEBUG__
         for(i=0; i<32; i++)
@@ -696,29 +629,20 @@ HLS_PIPELINE(1)
             break;
     }
 
-#ifdef __VIVADO__
-    for(i = 0; i<8192; i++)
-    {
-#pragma HLS PIPELINE
-        dm_out[i].SET_SLC(0,data_memory.memory[i][0]);
-        dm_out[i].SET_SLC(8,data_memory.memory[i][1]);
-        dm_out[i].SET_SLC(16,data_memory.memory[i][2]);
-        dm_out[i].SET_SLC(24,data_memory.memory[i][3]);
-    }
-#endif
-    /*for(i=0;i<32;i++){
-    	#pragma HLS PIPELINE
-    	debug_arr[i].SET_SLC(0,REG[i]);
-    }*/
-
     print_simulator_output("Successfully executed all instructions in ",n_inst," cycles");
     nl();
 }
 
-void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_INT(32) ins_memory[8192], CORE_INT(32) dm[8192], CORE_INT(32) dm_out[8192])
+void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache)
 {
     static Core core;
-    core.doStep(pc, nbcycle, ins_memory, dm, dm_out);
+    core.doCachedStep(pc, nbcycle, toICache, fromICache, toDCache, fromDCache);
+}
+
+void doCachedCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_UINT(32) ins_memory[8192], CORE_UINT(32) dm[8192])
+{
+    static CachedCore<8192, 32, 1, RANDOM> core;
+    core.run(pc, nbcycle, ins_memory, dm);
 }
 
 void doCache(ac_channel< DCacheRequest >& a, ac_channel< CORE_UINT(32) >& b, CORE_UINT(32) d[DRAM_SIZE])

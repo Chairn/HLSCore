@@ -33,13 +33,13 @@ private:
     CORE_UINT(32) pc;
 
 public:
-    CORE_INT(32)* ins_memory;
-    CORE_INT(32)* data_memory;
+    CORE_UINT(32)* ins_memory;
+    CORE_UINT(32)* data_memory;
 
     Simulator()
     {
-        ins_memory = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
-        data_memory = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
+        ins_memory = (CORE_UINT(32) *)malloc(8192 * sizeof(CORE_UINT(32)));
+        data_memory = (CORE_UINT(32) *)malloc(8192 * sizeof(CORE_UINT(32)));
         for(int i =0; i<8192; i++)
         {
             ins_memory[i]=0;
@@ -93,14 +93,14 @@ public:
         data_memorymap[addr] = value;
     }
 
-    CORE_INT(32)* getInstructionMemory()
+    CORE_UINT(32)* getInstructionMemory()
     {
 
         return ins_memory;
     }
 
 
-    CORE_INT(32)* getDataMemory()
+    CORE_UINT(32)* getDataMemory()
     {
         return data_memory;
     }
@@ -169,7 +169,12 @@ CCS_MAIN(int argv, char **argc)
     debug_out = (CORE_INT(32) *)malloc(200 * sizeof(CORE_INT(32)));
     int ins;
     //std::cin >> ins;
-    CCS_DESIGN(doCore(sim.getPC(),16925,sim.getInstructionMemory(),sim.getDataMemory(),dm_out));//,debug_out));
+    //CCS_DESIGN(doCachedCore(sim.getPC(),16925,sim.getInstructionMemory(),sim.getDataMemory()));//,debug_out));
+    FIFO(ICacheRequest) toICache;
+    FIFO(CORE_UINT(32)) fromICache;
+    FIFO(DCacheRequest) toDCache;
+    FIFO(CORE_UINT(32)) fromDCache;
+    CCS_DESIGN(doCore(sim.getPC(), ins, toICache, fromICache, toDCache, fromDCache));
     for(int i = 0; i<32; i++)
     {
         std::cout << std::dec << i << " : ";
