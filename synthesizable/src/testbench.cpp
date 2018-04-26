@@ -170,11 +170,12 @@ CCS_MAIN(int argv, char **argc)
     int ins;
     //std::cin >> ins;
     //CCS_DESIGN(doCachedCore(sim.getPC(),16925,sim.getInstructionMemory(),sim.getDataMemory()));//,debug_out));
-    FIFO(ICacheRequest) toICache;
+    /*FIFO(ICacheRequest) toICache;
     FIFO(CORE_UINT(32)) fromICache;
     FIFO(DCacheRequest) toDCache;
     FIFO(CORE_UINT(32)) fromDCache;
-    CCS_DESIGN(doCore(sim.getPC(), ins, toICache, fromICache, toDCache, fromDCache));
+    CCS_DESIGN(doCore(sim.getPC(), ins, toICache, fromICache, toDCache, fromDCache));*/
+    CCS_DESIGN(doCore(sim.getPC(), 16925, sim.getInstructionMemory(), sim.getDataMemory()));
     for(int i = 0; i<32; i++)
     {
         std::cout << std::dec << i << " : ";

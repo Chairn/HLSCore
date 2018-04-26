@@ -176,11 +176,12 @@ int main()
 
     //doCachedCore(sim.getPC(), ins, sim.getInstructionMemory(), sim.getDataMemory());
 
-    FIFO(ICacheRequest) toICache;
+    /*FIFO(ICacheRequest) toICache;
     FIFO(CORE_UINT(32)) fromICache;
     FIFO(DCacheRequest) toDCache;
     FIFO(CORE_UINT(32)) fromDCache;
-    doCore(sim.getPC(), ins, toICache, fromICache, toDCache, fromDCache);
+    doCore(sim.getPC(), ins, toICache, fromICache, toDCache, fromDCache);*/
+    doCore(sim.getPC(), ins, sim.getInstructionMemory(), sim.getDataMemory());
 
     /*Core core;
     core.doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);*/

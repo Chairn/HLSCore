@@ -38,40 +38,49 @@
 #define nl()
 #endif
 
-void memorySet(FIFO(DCacheRequest)& toDCache, CORE_UINT(32) address, CORE_INT(32) value, CORE_UINT(2) op)
+void Core::memorySet(CORE_UINT(32) dram[DRAM_SIZE], CORE_UINT(32) address, CORE_INT(32) value, CORE_UINT(2) op)
 {
-    DCacheRequest request;
-    request.address = address;
-    request.dataSize = op;
-    request.datum = value;
-    request.RnW = DCacheRequest::WRITE;
-    toDCache.write(request);
+    dcache.write(address, value, op, dram);
 }
 
-CORE_INT(32) memoryGet(FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache, CORE_UINT(32) address, CORE_UINT(2) op, CORE_UINT(1) sign)
+CORE_INT(32) Core::memoryGet(CORE_UINT(32) dram[DRAM_SIZE], CORE_UINT(32) address, CORE_UINT(2) op, CORE_UINT(1) sign)
 {
-    DCacheRequest request;
-    request.address = address;
-    request.dataSize = op;
-    request.RnW = DCacheRequest::READ;
-    toDCache.write(request);
-
     CORE_INT(32) value;
-    value.SET_SLC(0,fromDCache.read());
+    value.SET_SLC(0, dcache.read(address, dram));
 
-    if(sign)
+    switch(address & 3)
     {
-        switch(op)  // sign extend
-        {
-        case 0:
-            if(value[7])
-                value |= 0xFFFFFF00;
-            break;
-        case 1:
-            if(value[15])
-                value |= 0xFFFF0000;
-            break;
-        }
+    case 0:
+        value >>= 0;
+        break;
+    case 1:
+        value >>= 8;
+        break;
+    case 2:
+        value >>= 16;
+        break;
+    case 3:
+        value >>= 24;
+        break;
+    }
+    switch(op)
+    {
+    case 0:
+        value &= 0x000000FF;
+        if(sign && value[7])
+            value |= 0xFFFFFF00;
+        break;
+    case 1:
+        value &= 0x0000FFFF;
+        if(sign && value[15])
+            value |= 0xFFFFFF00;
+        break;
+    case 2:
+        value &= 0xFFFFFFFF;
+        break;
+    case 3:
+        value &= 0xFFFFFFFF;
+        break;
     }
 
     return value;
@@ -92,7 +101,7 @@ CORE_INT(32) Core::reg_controller(CORE_UINT(32) address, CORE_UINT(1) op, CORE_I
     return return_val;
 }
 
-void Core::Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, CORE_UINT(3) mem_lock)
+void Core::Ft(CORE_UINT(32) dram[DRAM_SIZE], CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, CORE_UINT(3) mem_lock)
 {
     CORE_UINT(32) next_pc;
     if(freeze_fetch)
@@ -130,10 +139,7 @@ void Core::Ft(CORE_UINT(32) *pc, CORE_UINT(1) freeze_fetch, FIFO(ICacheRequest)&
     }
     if(!freeze_fetch)
     {
-        ICacheRequest request;
-        request.address = (*pc & 0xFFFF) >> 2;
-        toICache.write(request);
-        ftoDC.instruction = fromICache.read();
+        ftoDC.instruction = icache.read((*pc & 0xFFFF) >> 2, dram);
         ftoDC.pc = *pc;
         //debugger->set(debugger_index,ftoDC->pc,15);
     }
@@ -451,9 +457,8 @@ void Core::Ex(CORE_UINT(1) *ex_bubble, CORE_UINT(1) *mem_bubble, CORE_UINT(2) *s
     *ex_bubble = 0;
 }
 
-void Core::do_Mem(FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache, CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble)
+void Core::do_Mem(CORE_UINT(32) dram[DRAM_SIZE], CORE_UINT(3) *mem_lock, CORE_UINT(1) *mem_bubble, CORE_UINT(1) *wb_bubble)
 {
-
     if(*mem_bubble)
     {
         *mem_bubble = 0;
@@ -524,7 +529,7 @@ void Core::do_Mem(FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache
                     sign = 0;
                     break;
                 }
-                memtoWB.result = memoryGet(toDCache, fromDCache, memtoWB.result, ld_op, sign);
+                memtoWB.result = memoryGet(dram, memtoWB.result, ld_op, sign);
                 break;
             case RISCV_ST:
                 switch(extoMem.funct3)
@@ -539,7 +544,7 @@ void Core::do_Mem(FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache
                     st_op = 0;
                     break;
                 }
-                memorySet(toDCache, memtoWB.result, extoMem.datac, st_op);
+                memorySet(dram, memtoWB.result, extoMem.datac, st_op);
                 //data_memory[(memtoWB.result/4)%8192] = extoMem.datac;
                 break;
             }
@@ -580,7 +585,7 @@ Core::Core()
 }
 
 HLS_DESIGN(interface)
-void Core::doCachedStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache)
+void Core::doCachedStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_UINT(32) ins_mem[DRAM_SIZE], CORE_UINT(32) data_mem[DRAM_SIZE])
 {
     int i;
 
@@ -610,13 +615,12 @@ doStep_label1:
     while(n_inst < nbcycle)
     {
 HLS_PIPELINE(1)
-
         doWB(&wb_bubble, &early_exit);
 
-        do_Mem(toDCache, fromDCache, &mem_lock, &mem_bubble, &wb_bubble);
+        do_Mem(data_mem, &mem_lock, &mem_bubble, &wb_bubble);
         Ex(&ex_bubble, &mem_bubble, &sys_status);
         DC(&prev_opCode, &prev_pc, mem_lock, &freeze_fetch, &ex_bubble);
-        Ft(&pc, freeze_fetch, toICache, fromICache, mem_lock);
+        Ft(ins_mem, &pc, freeze_fetch, mem_lock);
         n_inst++;
 #ifdef __DEBUG__
         for(i=0; i<32; i++)
@@ -634,21 +638,25 @@ HLS_PIPELINE(1)
     nl();
 }
 
-void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache)
+void doCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_UINT(32) ins_memory[8192], CORE_UINT(32) dm[8192])
 {
     static Core core;
-    core.doCachedStep(pc, nbcycle, toICache, fromICache, toDCache, fromDCache);
+    core.doCachedStep(pc, nbcycle, ins_memory, dm);
 }
 
 void doCachedCore(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, CORE_UINT(32) ins_memory[8192], CORE_UINT(32) dm[8192])
 {
-    static CachedCore<8192, 32, 1, RANDOM> core;
-    core.run(pc, nbcycle, ins_memory, dm);
+    /*static CachedCore<8192, 32, 1, RANDOM> core;
+    core.run(pc, nbcycle, ins_memory, dm);*/
 }
 
-void doCache(ac_channel< DCacheRequest >& a, ac_channel< CORE_UINT(32) >& b, CORE_UINT(32) d[DRAM_SIZE])
+void doCache(ac_channel< DCacheRequest >& a, CORE_UINT(32) d[DRAM_SIZE])
 {
     static DCache<8192, 32, 1, RANDOM> dcache;
-    dcache.run(a,b,d);
+    DCacheRequest request = a.read();
+    if(request.RnW == DCacheRequest::READ)
+        dcache.read(request.address, d);
+    else
+        dcache.write(request.address, request.datum, request.dataSize, d);
     //static BaseBase<8192,32,1,DCacheControl> test;
 }

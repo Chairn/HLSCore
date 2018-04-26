@@ -58,16 +58,16 @@ directive set -CLUSTER_RTL_SYN false
 directive set -CLUSTER_FAST_MODE false
 directive set -CLUSTER_TYPE combinational
 directive set -COMPGRADE fast
-//directive set -DESIGN_HIERARCHY doCore
+directive set -DESIGN_HIERARCHY doCore
 go analyze
 solution library add C28SOI_SC_12_CORE_LL_ccs -file {$MGC_HOME/pkgs/siflibs/designcompiler/CORE65LPHVT_ccs.lib} -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {28nm FDSOI}
 solution library add ST_singleport_8192x32
 go libraries
 directive set -CLOCKS {clk {-CLOCK_PERIOD 1.66 -CLOCK_EDGE rising -CLOCK_UNCERTAINTY 0.0 -CLOCK_HIGH_TIME 0.83 -RESET_SYNC_NAME rst -RESET_ASYNC_NAME arst_n -RESET_KIND sync -RESET_SYNC_ACTIVE high -RESET_ASYNC_ACTIVE low -ENABLE_ACTIVE high}}
 go assembly
-directive set /doCachedCore/dcache.control.vdt:rsc -MAP_TO_MODULE {[Register]}
-directive set /doCachedCore/icache.control.vdt:rsc -MAP_TO_MODULE {[Register]}
-directive set /doCachedCore/core.REG:rsc -MAP_TO_MODULE {[Register]}
-directive set /doCachedCore/core/main/doStep_label1 -PIPELINE_INIT_INTERVAL 1
+directive set /doCore/core.dcache.control.vdt:rsc -MAP_TO_MODULE {[Register]}
+directive set /doCore/core.icache.control.vdt:rsc -MAP_TO_MODULE {[Register]}
+directive set /doCore/core.REG:rsc -MAP_TO_MODULE {[Register]}
+directive set /doCore/core/main/doStep_label1 -PIPELINE_INIT_INTERVAL 1
 go architect
 go extract

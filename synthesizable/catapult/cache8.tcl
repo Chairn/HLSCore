@@ -64,7 +64,6 @@ go analyze
 solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/synthesizable/catapult/memories/ -append
 solution library add C28SOI_SC_12_CORE_LL_ccs -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {28nm FDSOI}
 solution library add ST_singleport_8192x32
-solution library add ram_sample-065nm-singleport_beh_dc
 go libraries
 directive set -CLOCKS {clk {-CLOCK_PERIOD 2 -CLOCK_EDGE rising -CLOCK_HIGH_TIME 1 -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {} -ENABLE_ACTIVE high}}
 go assembly
