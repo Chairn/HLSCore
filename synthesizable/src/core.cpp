@@ -1,7 +1,7 @@
 /* vim: set ts=4 nu ai: */
 #include "riscvISA.h"
-#include "core.h"
 #include "cache.h"
+#include "core.h"
 #if defined(__SIMULATOR__) || defined(__DEBUG__)
 #include "debug.h"
 #include "syscall.h"
@@ -579,6 +579,7 @@ Core::Core()
     dctoEx.dest = 0; //Register to be written
 }
 
+HLS_DESIGN(interface)
 void Core::doCachedStep(CORE_UINT(32) pc, CORE_UINT(32) nbcycle, FIFO(ICacheRequest)& toICache, FIFO(CORE_UINT(32))& fromICache, FIFO(DCacheRequest)& toDCache, FIFO(CORE_UINT(32))& fromDCache)
 {
     int i;

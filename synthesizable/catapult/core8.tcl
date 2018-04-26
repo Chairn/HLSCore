@@ -56,8 +56,8 @@ directive set -CLUSTER_RTL_SYN false
 directive set -CLUSTER_FAST_MODE false
 directive set -CLUSTER_TYPE combinational
 directive set -COMPGRADE fast
-directive set -DESIGN_HIERARCHY doCachedCore -prepend
 go analyze
+//directive set -DESIGN_HIERARCHY doCachedCore -prepend
 solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/synthesizable/catapult/memories/ -append
 solution library add C28SOI_SC_12_CORE_LL_ccs -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {28nm FDSOI}
 solution library add ST_singleport_8192x32

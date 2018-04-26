@@ -68,9 +68,9 @@ struct DCacheControl
 #define indexbits           (ac::log2_ceil<sets>::val)
 #define offsetbits          (ac::log2_ceil<Blocksize>::val)
 
-#define getTag(address)     (address.SLC(tagbits, 32-tagbits))
-#define getIndex(address)   (address.SLC(indexbits, 32-tagbits-indexbits))
-#define getOffset(address)  (address.SLC(offsetbits, 0))
+#define getTag(address)     (address.template SLC(tagbits, 32-tagbits))
+#define getIndex(address)   (address.template SLC(indexbits, 32-tagbits-indexbits))
+#define getOffset(address)  (address.template SLC(offsetbits, 0))
 
 template<int Size, int Blocksize, int Associativity, CacheReplacementPolicy Policy>
 CORE_UINT(waybits) select(CORE_UINT(indexbits) index)
@@ -101,10 +101,6 @@ public:
                 control[i].tagvalid[j] = 0;
     }
 
-    // Cache is non copyable object
-    ICache(const ICache&) = delete;
-    void operator=(const ICache&) = delete;
-
     HLS_DESIGN(interface)
     void run(FIFO(ICacheRequest)& fromCore, FIFO(CORE_UINT(32))& toCore, CORE_UINT(32) memory[DRAM_SIZE])
     {
@@ -121,6 +117,10 @@ public:
             CORE_UINT(32) value;
             CORE_UINT(1) valid;
 
+            CORE_UINT(1+tagbits) controlwriteback;
+            controlwriteback.SET_SLC(0, tag);
+            controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))1);   // always valid
+
             if(find(tag, index, offset, way, valid))
             {
                 value = data[index][way][offset >> 2];
@@ -134,6 +134,7 @@ public:
                 toCore.write(value);
             }
             // update policy bits
+            control[index].tagvalid[way] = controlwriteback;
         }
     }
 
@@ -149,10 +150,10 @@ private:
         findloop:for(int i = 0; i < Associativity; ++i)
         {
             CORE_UINT(tagbits+1) _tag = control[index].tagvalid[i];
-            if((_tag.SLC(tagbits, 0)) == tag)
+            if((_tag.template SLC(tagbits, 0)) == tag)
             {
                 way = i;
-                valid.SET_SLC(tagbits, _tag.SLC(1, tagbits));
+                valid.SET_SLC(tagbits, _tag.template SLC(1, tagbits));
                 found = 1;
                 //break;
             }
@@ -211,6 +212,7 @@ public:
             CORE_UINT(indexbits) index = getIndex(request.address);
             CORE_UINT(offsetbits) offset = getOffset(request.address);
 
+            CORE_UINT(tagbits) replacedtag;
             CORE_UINT(waybits) way;
             CORE_UINT(32) value;
             CORE_UINT(1) valid;
@@ -218,6 +220,7 @@ public:
 
             CORE_UINT(1+1+tagbits) controlwriteback;
             controlwriteback.SET_SLC(0, tag);
+            controlwriteback.SET_SLC(1+tagbits, (CORE_UINT(1))1);   // always valid
 
             if(find(tag, index, offset, way, valid, dirty))
             {
@@ -226,6 +229,7 @@ public:
                 {
                     format(value, offset, request.dataSize);
                     toCore.write(value);
+                    controlwriteback.SET_SLC(tagbits, dirty);
                 }
                 else            //write
                 {
@@ -236,8 +240,9 @@ public:
             else    // not found or invalid data
             {
                 way = select<Size, Blocksize, Associativity, Policy>(index);    //select invalid data first
+                replacedtag = control[index].vdt[way].template SLC(tagbits, 0);
                 if(valid && dirty)
-                    writeBack(tag, index, way, memory);
+                    writeBack(replacedtag, index, way, memory);
 
                 fetch(tag, index, offset, way, value, memory);
                 if(request.RnW) //read
@@ -269,11 +274,11 @@ private:
         findloop:for(int i = 0; i < Associativity; ++i)
         {
             CORE_UINT(1+1+tagbits) _tag = control[index].vdt[i];
-            if((_tag.SLC(tagbits, 0)) == tag)
+            if((_tag.template SLC(tagbits, 0)) == tag)
             {
                 way = i;
-                valid = _tag.SLC(1, 1+tagbits);
-                dirty = _tag.SLC(1, tagbits);
+                valid = _tag.template SLC(1, 1+tagbits);
+                dirty = _tag.template SLC(1, tagbits);
                 found = 1;
                 //break;
             }
@@ -301,7 +306,7 @@ private:
 
     void format(CORE_UINT(32)& value, CORE_UINT(offsetbits) offset, CORE_UINT(2) dataSize)
     {
-        switch(offset.SLC(2,0))
+        switch(offset.template SLC(2,0))
         {
         case 0:
             value >>= 0;
@@ -341,29 +346,29 @@ private:
             switch(offset & 3)
             {
             case 0:
-                mem.SET_SLC(0, datum.SLC(8, 0));
+                mem.SET_SLC(0, datum.template SLC(8, 0));
                 //mem = (mem & 0xFFFFFF00) | (datum & 0x000000FF);
                 break;
             case 1:
-                mem.SET_SLC(8, datum.SLC(8,8));
+                mem.SET_SLC(8, datum.template SLC(8,8));
                 //mem = (mem & 0xFFFF00FF) | ((datum & 0x000000FF) << 8);
                 break;
             case 2:
-                mem.SET_SLC(16, datum.SLC(8,16));
+                mem.SET_SLC(16, datum.template SLC(8,16));
                 //mem = (mem & 0xFF00FFFF) | ((datum & 0x000000FF) << 16);
                 break;
             case 3:
-                mem.SET_SLC(24, datum.SLC(8,24));
+                mem.SET_SLC(24, datum.template SLC(8,24));
                 //mem = (mem & 0x00FFFFFF) | ((datum & 0x000000FF) << 24);
                 break;
             }
             break;
         case 1:
             if(offset & 2)
-                mem.SET_SLC(16, datum.SLC(16,16));
+                mem.SET_SLC(16, datum.template SLC(16,16));
             //mem = (mem & 0x0000FFFF) | ((datum & 0x0000FFFF) << 16);
             else
-                mem.SET_SLC(0, datum.SLC(16,0));
+                mem.SET_SLC(0, datum.template SLC(16,0));
             //mem = (mem & 0xFFFF0000) | (datum & 0x0000FFFF);
             break;
         case 2:
@@ -376,9 +381,9 @@ private:
         data[index][way][offset >> 2] = mem;        // à sortir et à mettre à la fin de run? à tester
     }
 
-    void writeBack(CORE_UINT(tagbits) tag, CORE_UINT(indexbits) index, CORE_UINT(waybits) way, CORE_UINT(32) memory[DRAM_SIZE])
+    void writeBack(CORE_UINT(tagbits) replacedtag, CORE_UINT(indexbits) index, CORE_UINT(waybits) way, CORE_UINT(32) memory[DRAM_SIZE])
     {
-        CORE_UINT(32) baseAddress = (tag << (indexbits+offsetbits)) | (index << offsetbits) | 0;
+        CORE_UINT(32) baseAddress = (replacedtag << (indexbits+offsetbits)) | (index << offsetbits) | 0;
 
         HLS_PIPELINE(1)
         writeBackloop:for(int i = 0; i < Blocksize/4; ++i)
@@ -409,9 +414,9 @@ private:
 #define indexbits           (ac::log2_ceil<sets>::val)
 #define offsetbits          (ac::log2_ceil<Blocksize>::val)
 
-#define getTag(address)     (address.SLC(tagbits, 32-tagbits))
-#define getIndex(address)   (address.SLC(indexbits, 32-tagbits-indexbits))
-#define getOffset(address)  (address.SLC(offsetbits, 0))
+#define getTag(address)     (address.template SLC(tagbits, 32-tagbits))
+#define getIndex(address)   (address.template SLC(indexbits, 32-tagbits-indexbits))
+#define getOffset(address)  (address.template SLC(offsetbits, 0))
 
 template<int Size, int Blocksize, CacheReplacementPolicy Policy>
 class ICache<Size, Blocksize, 1, Policy>
@@ -429,10 +434,6 @@ public:
             control[i].tagvalid[0] = 0;
     }
 
-    // Cache is non copyable object
-    ICache(const ICache&) = delete;
-    void operator=(const ICache&) = delete;
-
     HLS_DESIGN(interface)
     void run(FIFO(ICacheRequest)& fromCore, FIFO(CORE_UINT(32))& toCore, CORE_UINT(32) memory[DRAM_SIZE])
     {
@@ -447,6 +448,9 @@ public:
 
             CORE_UINT(32) value;
             CORE_UINT(1) valid;
+            CORE_UINT(1+tagbits) controlwriteback;
+            controlwriteback.SET_SLC(0, tag);
+            controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))1); // valid
 
             if(find(tag, index, offset, valid))
             {
@@ -459,6 +463,7 @@ public:
                 toCore.write(value);
             }
             // update policy bits
+            control[index].tagvalid[0] = controlwriteback;
         }
     }
 
@@ -472,9 +477,9 @@ private:
         CORE_UINT(1) found = 0;
 
         CORE_UINT(tagbits+1) _tag = control[index].tagvalid[0];
-        if((_tag.SLC(tagbits, 0)) == tag)
+        if((_tag.template SLC(tagbits, 0)) == tag)
         {
-            valid = _tag.SLC(1, tagbits);
+            valid = _tag.template SLC(1, tagbits);
             found = 1;
             //break;
         }
@@ -529,6 +534,7 @@ public:
             CORE_UINT(indexbits) index = getIndex(request.address);
             CORE_UINT(offsetbits) offset = getOffset(request.address);
 
+            CORE_UINT(tagbits) replacedtag;
             CORE_UINT(32) value;
             CORE_UINT(1) valid;
             CORE_UINT(1) dirty;
@@ -536,24 +542,26 @@ public:
             CORE_UINT(1+1+tagbits) controlwriteback;
             controlwriteback.SET_SLC(0, tag);
 
-            if(find(tag, index, offset, valid, dirty))
+            if(find(tag, index, offset, valid, dirty, replacedtag))
             {
                 value = data[index][0][offset >> 2];
                 if(request.RnW) //read
                 {
                     format(value, offset, request.dataSize);
                     toCore.write(value);
+                    controlwriteback.SET_SLC(tagbits, dirty);
                 }
                 else            //write
                 {
                     write(index, offset, request.dataSize, value, request.datum);
-                    controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))1);
+                    controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))1); //dirty
                 }
+                controlwriteback.SET_SLC(1+tagbits, (CORE_UINT(1))1);   // valid
             }
             else    // not found or invalid data
             {
                 if(valid && dirty)
-                    writeBack(tag, index, memory);
+                    writeBack(replacedtag, index, memory);
 
                 fetch(tag, index, offset, value, memory);
                 if(request.RnW) //read
@@ -565,7 +573,8 @@ public:
                 {
                     write(index, offset, request.dataSize, value, request.datum);
                 }
-                controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))request.RnW);
+                controlwriteback.SET_SLC(tagbits, (CORE_UINT(1))!request.RnW);
+                controlwriteback.SET_SLC(1+tagbits, (CORE_UINT(1))1);   // valid
             }
             // update policy bits with controlwriteback
             control[index].vdt[0] = controlwriteback;
@@ -577,16 +586,16 @@ private:
 //#pragma map to register? to sram? if sram, maybe merge with data(and make an array of struct)
     DCacheControl<tagbits, 1> control[sets];
 
-    CORE_UINT(1) find(CORE_UINT(tagbits) tag, CORE_UINT(indexbits) index, CORE_UINT(offsetbits) offset, CORE_UINT(1)& valid, CORE_UINT(1)& dirty)
+    CORE_UINT(1) find(CORE_UINT(tagbits) tag, CORE_UINT(indexbits) index, CORE_UINT(offsetbits) offset, CORE_UINT(1)& valid, CORE_UINT(1)& dirty, CORE_UINT(tagbits)& replacedtag)
     {
         CORE_UINT(1) found = 0;
-
-
         CORE_UINT(1+1+tagbits) _tag = control[index].vdt[0];
-        if((_tag.SLC(tagbits, 0)) == tag)
+        replacedtag = _tag.template SLC(tagbits, 0);
+
+        if((_tag.template SLC(tagbits, 0)) == tag)
         {
-            valid = _tag.SLC(1, 1+tagbits);
-            dirty = _tag.SLC(1, tagbits);
+            valid = _tag.template SLC(1, 1+tagbits);
+            dirty = _tag.template SLC(1, tagbits);
             found = 1;
             //break;
         }
@@ -613,7 +622,7 @@ private:
 
     void format(CORE_UINT(32)& value, CORE_UINT(offsetbits) offset, CORE_UINT(2) dataSize)
     {
-        switch(offset.SLC(2,0))
+        switch(offset.template SLC(2,0))
         {
         case 0:
             value >>= 0;
@@ -653,29 +662,29 @@ private:
             switch(offset & 3)
             {
             case 0:
-                mem.SET_SLC(0, datum.SLC(8, 0));
+                mem.SET_SLC(0, datum.template SLC(8, 0));
                 //mem = (mem & 0xFFFFFF00) | (datum & 0x000000FF);
                 break;
             case 1:
-                mem.SET_SLC(8, datum.SLC(8,8));
+                mem.SET_SLC(8, datum.template SLC(8,8));
                 //mem = (mem & 0xFFFF00FF) | ((datum & 0x000000FF) << 8);
                 break;
             case 2:
-                mem.SET_SLC(16, datum.SLC(8,16));
+                mem.SET_SLC(16, datum.template SLC(8,16));
                 //mem = (mem & 0xFF00FFFF) | ((datum & 0x000000FF) << 16);
                 break;
             case 3:
-                mem.SET_SLC(24, datum.SLC(8,24));
+                mem.SET_SLC(24, datum.template SLC(8,24));
                 //mem = (mem & 0x00FFFFFF) | ((datum & 0x000000FF) << 24);
                 break;
             }
             break;
         case 1:
             if(offset & 2)
-                mem.SET_SLC(16, datum.SLC(16,16));
+                mem.SET_SLC(16, datum.template SLC(16,16));
             //mem = (mem & 0x0000FFFF) | ((datum & 0x0000FFFF) << 16);
             else
-                mem.SET_SLC(0, datum.SLC(16,0));
+                mem.SET_SLC(0, datum.template SLC(16,0));
             //mem = (mem & 0xFFFF0000) | (datum & 0x0000FFFF);
             break;
         case 2:
@@ -688,9 +697,9 @@ private:
         data[index][0][offset >> 2] = mem;        // à sortir et à mettre à la fin de run? à tester
     }
 
-    void writeBack(CORE_UINT(tagbits) tag, CORE_UINT(indexbits) index, CORE_UINT(32) memory[DRAM_SIZE])
+    void writeBack(CORE_UINT(tagbits) replacedtag, CORE_UINT(indexbits) index, CORE_UINT(32) memory[DRAM_SIZE])
     {
-        CORE_UINT(32) baseAddress = (tag << (indexbits+offsetbits)) | (index << offsetbits) | 0;
+        CORE_UINT(32) baseAddress = (replacedtag << (indexbits+offsetbits)) | (index << offsetbits) | 0;
 
         HLS_PIPELINE(1)
         writeBackloop:for(int i = 0; i < Blocksize/4; ++i)
