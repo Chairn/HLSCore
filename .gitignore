@@ -2,4 +2,6 @@
 *.log
 */testdir/*
 */debug_output/*
-Catapult*
+*Catapult*
+*.sh
+*.swp
