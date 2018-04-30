@@ -2,6 +2,10 @@
 
 #ifndef __SYNTHESIS__
 #include <cstdio>
+
+#define debug(...)   printf(__VA_ARGS__)
+#else
+#define debug(...)
 #endif
 
 struct FtoDC
@@ -51,86 +55,121 @@ enum {
     OUT
 };
 
+enum {
+    MemtoCache = 0,
+    CachetoMem = 1
+};
 
-void cache(int dmem[N],  int data[32], int address, bool cacheenable, int& read, bool& datavalid)
+struct CacheControl
 {
-    static int tag = 0;
-    static int wantedAddress = 0;
-    static bool valid = 0;
-    static bool fetch = 0;
-    static int i;
-    int tmp;
+    int tag;
+    int wantedAddress;
+    bool dirty;
+    bool valid;
+    bool sens;
+    bool enable;
+    int i;
+    int valuetowrite;
+};
 
-    if(fetch)
+void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cacheenable, bool writeenable, int writevalue, int& read, bool& datavalid)
+{
+    if(ctrl.enable)
     {
-#ifndef __SYNTHESIS__
-        //printf("fetching %04x\n", tag|i);
-#endif
-        tmp = dmem[tag | i];
-        data[i] = tmp;
-        if(i == wantedAddress & 0x1F)
+        if(ctrl.sens)   //cachetomem = writeback
         {
-            read = tmp;
-            datavalid = true;
-        }
-        else
-        {
+            dmem[ctrl.tag | ctrl.i] = ctrl.valuetowrite;
+            if(++ctrl.i < 32)
+            {
+                ctrl.valuetowrite = data[ctrl.i];
+            }
+            else
+            {
+                ctrl.enable = false; //laisser à true?
+                ctrl.dirty = false;
+                ctrl.sens = MemtoCache;
+                debug("end of writeback\n");
+            }
+
             datavalid = false;
         }
-
-        if(++i == 32)
+        else            //memtocache = fetch
         {
-            fetch = false;
-            valid = true;
+            data[ctrl.i] = ctrl.valuetowrite;
+
+            if((ctrl.tag | ctrl.i) == ctrl.wantedAddress)
+            {
+                if(writeenable)
+                {
+                    data[ctrl.i] = writevalue;
+                    ctrl.dirty = true;
+                }
+                else
+                {
+                    read = ctrl.valuetowrite;
+                    ctrl.dirty = false;
+                }
+                datavalid = true;
+            }
+            else
+                datavalid = false;
+
+            if(++ctrl.i < 32)
+            {
+                ctrl.valuetowrite = dmem[ctrl.tag | ctrl.i];
+            }
+            else
+            {
+                ctrl.enable = false;
+                ctrl.valid = true;
+                debug("end of fetch\n");
+            }
         }
     }
     else if(cacheenable)
     {
-#ifndef __SYNTHESIS__
-        printf("cacheenable     ");
-#endif
-        if((tag == (address & 0xFFFFFFE0)) && valid)
+        debug("cacheenable     ");
+        if(((unsigned)ctrl.tag == (address & 0xFFFFFFE0)) && ctrl.valid)
         {
-            read = data[address & 0x1F];
+            if(writeenable)
+            {
+                data[address & 0x1F] = writevalue;
+                ctrl.dirty = true;
+            }
+            else
+                read = data[address & 0x1F];
             datavalid = true;
-#ifndef __SYNTHESIS__
-        printf("valid data\n");
-#endif
+
+            debug("valid data\n");
         }
         else    // not found or invalid
         {
-#ifndef __SYNTHESIS__
-        printf("data not found or invalid   ");
-#endif
-            tag = address & 0xFFFFFFE0;
-            wantedAddress = address;
-            fetch = true;
-            valid = false;
-            tmp = dmem[tag];
-            data[0] = tmp;
-            i = 1;
-            if((wantedAddress & 0x1F) == 0)
+            debug("data not found or invalid   ");
+            if(ctrl.dirty)
             {
-                read = tmp;
-                datavalid = true;
-#ifndef __SYNTHESIS__
-        printf("address low bytes are null\n");
-#endif
+                ctrl.enable = true;
+                ctrl.sens = CachetoMem;
+                ctrl.i = 0;
+                ctrl.valuetowrite = data[0];
+                debug("starting writeback \n");
             }
             else
             {
-                datavalid = false;
-#ifndef __SYNTHESIS__
-        printf("starting fetching\n");
-#endif
+                ctrl.tag = address & 0xFFFFFFE0;
+                ctrl.wantedAddress = address;
+                ctrl.enable = true;
+                ctrl.sens = MemtoCache;
+                ctrl.valid = false;
+                ctrl.i = 0;
+                ctrl.valuetowrite = dmem[ctrl.tag];
+                debug("starting fetching\n");
             }
+            datavalid = false;
         }
     }
     else
     {
         datavalid = false;
-        /*datavalid = true;
-        read = data[address & 0x1F];*/
     }
 }
 
@@ -199,6 +238,7 @@ void Dc(int instruction, DCtoEx& dte, int& lock, int reg[16])
         case 7:
             dctoex.opcode = OUT;
             dctoex.dataa = reg[(instruction & 0xF00) >> 8];
+            dctoex.dest = instruction >> 16;
             break;
         }
     }
@@ -235,6 +275,7 @@ void Ex(DCtoEx dctoex, MemtoWB& memtowb, int& pc)
         break;
     case OUT:
         tomem.out = true;
+        tomem.dest = dctoex.dest;
         tomem.result = dctoex.dataa;
         break;
     }
@@ -242,7 +283,7 @@ void Ex(DCtoEx dctoex, MemtoWB& memtowb, int& pc)
 }
 
 void Mem(int reg[16], MemtoWB memtowb,      // from core
-         int& ldaddress, bool& read,        // to cache
+         int& address, bool& cacheenable, bool& writeenable, int& writevalue,       // to cache
          int datum, bool valid,             // from cache
          bool& memlock, int& res)
 {
@@ -250,27 +291,37 @@ void Mem(int reg[16], MemtoWB memtowb,      // from core
     {
         if(valid)
         {
-            reg[memtowb.dest] = datum;
+            if(!writeenable)
+                reg[memtowb.dest] = datum;
             memlock = false;
+            writeenable = false;
+            cacheenable = false;
         }
     }
     else
     {
         if(memtowb.ldmem)
         {
-            ldaddress = memtowb.result;
-            read = true;
+            address = memtowb.result;
+            cacheenable = true;
             memlock = true;
+            writeenable = false;
         }
         else if(memtowb.out)
         {
             res = memtowb.result;
-            read = false;
+            address = memtowb.dest;
+            writevalue = memtowb.result;
+            cacheenable = true;
+            memlock = true;
+            writeenable = true;
         }
         else if(memtowb.dest)
         {
             reg[memtowb.dest] = memtowb.result;
-            read = false;
+            cacheenable = false;
+            memlock = false;
+            writeenable = false;
         }
     }
 }
@@ -280,18 +331,21 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
     static int iaddress = 0;
     static int reg[16] = {0};
     static int cachedata[32] = {0};
-    static MemtoWB memtowb = {0,0,0,0};
-    static DCtoEx dctoex = {0,0,0,0};
+    static MemtoWB memtowb = {0};
+    static DCtoEx dctoex = {0};
     static int ldaddress = 0;
     static int readvalue = 0;
+    static int writevalue = 0;
     static int instruction = 0;
     static int branchjumplock = 0;
     static bool memlock = false;
     static bool cacheenable = false;
+    static bool writeenable = false;
     static bool datavalid = false;
+    static CacheControl ctrl = {0};
 
-    cache(dmem, cachedata, ldaddress, cacheenable, readvalue, datavalid);
-    Mem(reg, memtowb, ldaddress, cacheenable, readvalue, datavalid, memlock, res);
+    cache(ctrl, dmem, cachedata, ldaddress, cacheenable, writeenable, writevalue, readvalue, datavalid);
+    Mem(reg, memtowb, ldaddress, cacheenable, writeenable, writevalue, readvalue, datavalid, memlock, res);
     if(!memlock)
     {
         Ex(dctoex, memtowb, iaddress);
@@ -299,6 +353,11 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
         Ft(imem, iaddress, instruction, branchjumplock);
     }
 #ifndef __SYNTHESIS__
+    //cache write back for simulation
+    if(ctrl.dirty)
+        for(int i  = 0; i < 32; ++i)
+            dmem[ctrl.tag | i] = cachedata[i];
+
     const char* ins;
     switch (instruction & 0xF)
     {
@@ -328,10 +387,10 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
         ins = "???";
         break;
     }
-    printf("%04x    % 8s    %04x(%d)    %04x(%d)    ",
-           iaddress-1, ins, ldaddress, cacheenable, readvalue, datavalid);
+    debug("%04x    %8s    %04x(%d)    %04x(%d)    ",
+           iaddress-1, ins, ldaddress, cacheenable, writevalue, datavalid);
     for(int i(0); i<16;++i)
-        printf("%08x ", reg[i]);
-    printf("\n");
+        debug("%08x ", reg[i]);
+    debug("\n");
 #endif
 }
