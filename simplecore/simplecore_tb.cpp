@@ -31,21 +31,24 @@ CCS_MAIN(int argc, char **argv)
     imem[0x16] = 0x00000000;
     imem[0x17] = 0x00000000;
     imem[0x18] = 0x00000000;
-    imem[0x19] = 0x00000507;    // out r[5]
+    imem[0x19] = 0x10010507;    // out r[5] --> mem[0x1001]
+    imem[0x20] = 0x10200507;
 
     int i = 0;
     while(true)
     {
         CCS_DESIGN(simplecachedcore)(imem, dmem, res);
 
-        if(res != 0)
-            break;
+        /*if(dmem[0x1001] != 0x1001)
+            break;*/
         i++;
-        if(i > 1000)
+        if(i > 40100)
             break;
     }
 
-    cout << res << endl;
+    cout << "Result : " << res << " in " << i << " cycles" << endl;
+    cout << "Result in memory : " << dmem[0x1001] << endl;
+    cout << "Expected result : " << 4095*4096/2 << endl;
 
     CCS_RETURN(0);
 }
