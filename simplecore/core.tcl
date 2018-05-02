@@ -58,12 +58,15 @@ directive set -CLUSTER_TYPE combinational
 directive set -COMPGRADE fast
 directive set -DESIGN_HIERARCHY simplecachedcore
 go analyze
+//solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/simplecore/memories/ -append
 solution library add C28SOI_SC_12_CORE_LL_ccs -file {$MGC_HOME/pkgs/siflibs/designcompiler/CORE65LPHVT_ccs.lib} -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {28nm FDSOI}
 solution library add ST_singleport_8192x32
 go libraries
-directive set -CLOCKS {clk {-CLOCK_PERIOD 1.66 -CLOCK_EDGE rising -CLOCK_UNCERTAINTY 0.0 -CLOCK_HIGH_TIME 0.83 -RESET_SYNC_NAME rst -RESET_ASYNC_NAME arst_n -RESET_KIND sync -RESET_SYNC_ACTIVE high -RESET_ASYNC_ACTIVE low -ENABLE_ACTIVE high}}
+directive set -CLOCKS {clk {-CLOCK_PERIOD 1.5 -CLOCK_EDGE rising -CLOCK_HIGH_TIME 0.75 -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {} -ENABLE_ACTIVE high}}
 go assembly
 directive set /simplecachedcore/core/main -PIPELINE_INIT_INTERVAL 1
 directive set /simplecachedcore/core/reg:rsc -MAP_TO_MODULE {[Register]}
+directive set /simplecachedcore/core -CLOCK_OVERHEAD 1.0
 go architect
+//ignore_memory_precedences -from read_mem() -to ...    // use this? dangerous if real dependency
 go extract
