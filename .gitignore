@@ -5,3 +5,5 @@
 *Catapult*
 *.sh
 *.swp
+*old*
+*/memories/*

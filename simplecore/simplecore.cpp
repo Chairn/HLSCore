@@ -1,3 +1,4 @@
+#include <ac_int.h>
 #include "simplecore.h"
 
 #ifndef __SYNTHESIS__
@@ -68,7 +69,7 @@ struct CacheControl
     bool valid;
     bool sens;
     bool enable;
-    int i;
+    ac_int<5, false> i;
     int valuetowrite;
 };
 
@@ -79,15 +80,12 @@ void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cach
         if(ctrl.sens)   //cachetomem = writeback
         {
             dmem[ctrl.tag | ctrl.i] = ctrl.valuetowrite;
-            if(++ctrl.i < 32)
-            {
+            if(++ctrl.i)
                 ctrl.valuetowrite = data[ctrl.i];
-            }
             else
             {
-                ctrl.enable = false; //laisser à true?
+                ctrl.enable = false;
                 ctrl.dirty = false;
-                ctrl.sens = MemtoCache;
                 debug("end of writeback\n");
             }
 
@@ -95,9 +93,7 @@ void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cach
         }
         else            //memtocache = fetch
         {
-            data[ctrl.i] = ctrl.valuetowrite;
-
-            if((ctrl.tag | ctrl.i) == ctrl.wantedAddress)
+            if(ctrl.i == (ctrl.wantedAddress & 0x1F))
             {
                 if(writeenable)
                 {
@@ -106,21 +102,24 @@ void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cach
                 }
                 else
                 {
+                    data[ctrl.i] = ctrl.valuetowrite;
                     read = ctrl.valuetowrite;
                     ctrl.dirty = false;
                 }
                 datavalid = true;
             }
             else
-                datavalid = false;
-
-            if(++ctrl.i < 32)
             {
-                ctrl.valuetowrite = dmem[ctrl.tag | ctrl.i];
+                data[ctrl.i] = ctrl.valuetowrite;
+                datavalid = false;
             }
+
+            if(++ctrl.i)
+                ctrl.valuetowrite = dmem[ctrl.tag | ctrl.i];
             else
             {
                 ctrl.enable = false;
+                ctrl.dirty = false;
                 ctrl.valid = true;
                 debug("end of fetch\n");
             }
@@ -131,16 +130,18 @@ void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cach
         debug("cacheenable     ");
         if(((unsigned)ctrl.tag == (address & 0xFFFFFFE0)) && ctrl.valid)
         {
+            debug("valid data   ");
             if(writeenable)
             {
                 data[address & 0x1F] = writevalue;
                 ctrl.dirty = true;
             }
             else
+            {
                 read = data[address & 0x1F];
+                debug("%d\n", read);
+            }
             datavalid = true;
-
-            debug("valid data\n");
         }
         else    // not found or invalid
         {
@@ -331,6 +332,8 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
     static int iaddress = 0;
     static int reg[16] = {0};
     static int cachedata[32] = {0};
+    static bool dummy = ac::init_array<AC_VAL_DC>(cachedata, 32);
+    (void)dummy;
     static MemtoWB memtowb = {0};
     static DCtoEx dctoex = {0};
     static int ldaddress = 0;
@@ -358,39 +361,47 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
         for(int i  = 0; i < 32; ++i)
             dmem[ctrl.tag | i] = cachedata[i];
 
-    const char* ins;
-    switch (instruction & 0xF)
+    if(instruction)
     {
-    case 0:
-        ins = "nop";
-        break;
-    case 1:
-        ins = "loadimm";
-        break;
-    case 2:
-    case 3:
-        ins = "loadmem";
-        break;
-    case 4:
-        ins = "plus";
-        break;
-    case 5:
-        ins = "compare";
-        break;
-    case 6:
-        ins = "branch";
-        break;
-    case 7:
-        ins = "out";
-        break;
-    default:
-        ins = "???";
-        break;
+        const char* ins;
+        switch (instruction & 0xF)
+        {
+        case 0:
+            ins = "nop";
+            break;
+        case 1:
+            ins = "loadimm";
+            break;
+        case 2:
+        case 3:
+            ins = "loadmem";
+            break;
+        case 4:
+            ins = "plus";
+            break;
+        case 5:
+            ins = "compare";
+            break;
+        case 6:
+            ins = "branch";
+            break;
+        case 7:
+            ins = "out";
+            break;
+        default:
+            ins = "???";
+            break;
+        }
+        debug("%04x    %8s    %04x(%d)    R:%04x W:%04x(%d)    ",
+               iaddress-1, ins, ldaddress, cacheenable, readvalue, writevalue, datavalid);
+        for(int i(0); i<16;++i)
+            debug("%08x ", reg[i]);
+        debug("\n");
     }
-    debug("%04x    %8s    %04x(%d)    %04x(%d)    ",
-           iaddress-1, ins, ldaddress, cacheenable, writevalue, datavalid);
-    for(int i(0); i<16;++i)
-        debug("%08x ", reg[i]);
-    debug("\n");
+    else
+    {
+        debug("%04x    %8s    %04x(%d)    R:%04x W:%04x(%d)\n",
+               iaddress-1, "nop", ldaddress, cacheenable, readvalue, writevalue, datavalid);
+    }
 #endif
 }
