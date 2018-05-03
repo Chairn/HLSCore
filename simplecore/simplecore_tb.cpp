@@ -1,13 +1,10 @@
 #include <iostream>
 
 #include "simplecore.h"
-#include "mc_scverify.h"
-
-
 
 using namespace std;
 
-CCS_MAIN(int argc, char **argv)
+int main(int argc, char **argv)
 {
     int imem[N];
     int dmem[N];
@@ -37,7 +34,7 @@ CCS_MAIN(int argc, char **argv)
     int i = 0;
     while(true)
     {
-        CCS_DESIGN(simplecachedcore)(imem, dmem, res);
+        simplecachedcore(imem, dmem, res);
 
         /*if(dmem[0x1001] != 0x1001)
             break;*/
@@ -50,5 +47,5 @@ CCS_MAIN(int argc, char **argv)
     cout << "Result in memory : " << dmem[0x1001] << endl;
     cout << "Expected result : " << 4095*4096/2 << endl;
 
-    CCS_RETURN(0);
+    return 0;
 }

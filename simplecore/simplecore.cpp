@@ -1,4 +1,4 @@
-#include <ac_int.h>
+#include <ap_int.h>
 #include "simplecore.h"
 
 #ifndef __SYNTHESIS__
@@ -69,7 +69,7 @@ struct CacheControl
     bool valid;
     bool sens;
     bool enable;
-    ac_int<5, false> i;
+    ap_uint<5> i;
     int valuetowrite;
 };
 
@@ -135,11 +135,12 @@ void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cach
             {
                 data[address & 0x1F] = writevalue;
                 ctrl.dirty = true;
+                debug("W:%04x\n", writevalue);
             }
             else
             {
                 read = data[address & 0x1F];
-                debug("%d\n", read);
+                debug("R:%04x\n", read);
             }
             datavalid = true;
         }
@@ -332,8 +333,6 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
     static int iaddress = 0;
     static int reg[16] = {0};
     static int cachedata[32] = {0};
-    static bool dummy = ac::init_array<AC_VAL_DC>(cachedata, 32);
-    (void)dummy;
     static MemtoWB memtowb = {0};
     static DCtoEx dctoex = {0};
     static int ldaddress = 0;
