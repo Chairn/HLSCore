@@ -1,4 +1,3 @@
-#include <ac_int.h>
 #include "simplecore.h"
 
 #ifndef __SYNTHESIS__
@@ -63,29 +62,34 @@ enum {
 
 struct CacheControl
 {
-    int tag;
+    int tag[Sets][Associativity];
     int wantedAddress;
-    bool dirty;
-    bool valid;
+    bool dirty[Sets][Associativity];
+    bool valid[Sets][Associativity];
     bool sens;
     bool enable;
-    ac_int<5, false> i;
+    ac_int<ac::log2_ceil<Blocksize>::val, false> i;
     int valuetowrite;
+    int currentset;
+    int currentway;
 };
 
-void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cacheenable, bool writeenable, int writevalue, int& read, bool& datavalid)
+void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocksize], int address, bool cacheenable, bool writeenable, int writevalue, int& read, bool& datavalid)
 {
     if(ctrl.enable)
     {
         if(ctrl.sens)   //cachetomem = writeback
         {
-            dmem[ctrl.tag | ctrl.i] = ctrl.valuetowrite;
+            dmem[ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i] = ctrl.valuetowrite;
+
+            debug("Writing back %04x to %04x \n", ctrl.valuetowrite, ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i.to_int());
+
             if(++ctrl.i)
-                ctrl.valuetowrite = data[ctrl.i];
+                ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][ctrl.i];
             else
             {
                 ctrl.enable = false;
-                ctrl.dirty = false;
+                ctrl.dirty[ctrl.currentset][ctrl.currentway] = false;
                 debug("end of writeback\n");
             }
 
@@ -93,34 +97,36 @@ void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cach
         }
         else            //memtocache = fetch
         {
-            if(ctrl.i == (ctrl.wantedAddress & 0x1F))
+            if(ctrl.i == (ctrl.wantedAddress & blockmask))
             {
                 if(writeenable)
                 {
-                    data[ctrl.i] = writevalue;
-                    ctrl.dirty = true;
+                    data[ctrl.currentset][ctrl.currentway][ctrl.i] = writevalue;
+                    ctrl.dirty[ctrl.currentset][ctrl.currentway] = true;
                 }
                 else
                 {
-                    data[ctrl.i] = ctrl.valuetowrite;
+                    data[ctrl.currentset][ctrl.currentway][ctrl.i] = ctrl.valuetowrite;
                     read = ctrl.valuetowrite;
-                    ctrl.dirty = false;
+                    ctrl.dirty[ctrl.currentset][ctrl.currentway] = false;
                 }
                 datavalid = true;
             }
             else
             {
-                data[ctrl.i] = ctrl.valuetowrite;
+                data[ctrl.currentset][ctrl.currentway][ctrl.i] = ctrl.valuetowrite;
                 datavalid = false;
             }
 
+            debug("fetching %04x from %04x \n", ctrl.valuetowrite, ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i.to_int());
+
             if(++ctrl.i)
-                ctrl.valuetowrite = dmem[ctrl.tag | ctrl.i];
+                ctrl.valuetowrite = dmem[ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i];
             else
             {
                 ctrl.enable = false;
-                ctrl.dirty = false;
-                ctrl.valid = true;
+                //ctrl.dirty[ctrl.currentset][ctrl.currentway] = false;
+                ctrl.valid[ctrl.currentset][ctrl.currentway] = true;
                 debug("end of fetch\n");
             }
         }
@@ -128,41 +134,45 @@ void cache(CacheControl& ctrl, int dmem[N], int data[32], int address, bool cach
     else if(cacheenable)
     {
         debug("cacheenable     ");
-        if(((unsigned)ctrl.tag == (address & 0xFFFFFFE0)) && ctrl.valid)
+        ctrl.currentset = (address & setmask) >> ac::log2_ceil<Blocksize>::val;
+        debug("%d %d    ", ctrl.currentset, ctrl.currentway);
+        if((ctrl.tag[ctrl.currentset][ctrl.currentway] == (address & tagmask)) && ctrl.valid[ctrl.currentset][ctrl.currentway])
         {
             debug("valid data   ");
             if(writeenable)
             {
-                data[address & 0x1F] = writevalue;
-                ctrl.dirty = true;
+                data[ctrl.currentset][ctrl.currentway][address & blockmask] = writevalue;
+                ctrl.dirty[ctrl.currentset][ctrl.currentway] = true;
+                debug("W:%04x   ", writevalue);
             }
             else
             {
-                read = data[address & 0x1F];
-                debug("%d\n", read);
+                read = data[ctrl.currentset][ctrl.currentway][address & blockmask];
+                debug("R:%04x   ", read);
             }
             datavalid = true;
+            debug("@%04x\n", address);
         }
         else    // not found or invalid
         {
             debug("data not found or invalid   ");
-            if(ctrl.dirty)
+            if(ctrl.dirty[ctrl.currentset][ctrl.currentway])
             {
                 ctrl.enable = true;
                 ctrl.sens = CachetoMem;
                 ctrl.i = 0;
-                ctrl.valuetowrite = data[0];
+                ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][0];
                 debug("starting writeback \n");
             }
             else
             {
-                ctrl.tag = address & 0xFFFFFFE0;
+                ctrl.tag[ctrl.currentset][ctrl.currentway] = address & tagmask;
                 ctrl.wantedAddress = address;
                 ctrl.enable = true;
                 ctrl.sens = MemtoCache;
-                ctrl.valid = false;
+                ctrl.valid[ctrl.currentset][ctrl.currentway] = false;
                 ctrl.i = 0;
-                ctrl.valuetowrite = dmem[ctrl.tag];
+                ctrl.valuetowrite = dmem[ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val)];
                 debug("starting fetching\n");
             }
             datavalid = false;
@@ -331,8 +341,8 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
 {
     static int iaddress = 0;
     static int reg[16] = {0};
-    static int cachedata[32] = {0};
-    static bool dummy = ac::init_array<AC_VAL_DC>(cachedata, 32);
+    static int cachedata[Sets][Associativity][Blocksize] = {0};
+    static bool dummy = ac::init_array<AC_VAL_DC>((int*)cachedata, Sets*Associativity*Blocksize);
     (void)dummy;
     static MemtoWB memtowb = {0};
     static DCtoEx dctoex = {0};
@@ -357,10 +367,13 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
     }
 #ifndef __SYNTHESIS__
     //cache write back for simulation
-    if(ctrl.dirty)
-        for(int i  = 0; i < 32; ++i)
-            dmem[ctrl.tag | i] = cachedata[i];
-
+    for(int i  = 0; i < Sets; ++i)
+        for(int j = 0; j < Associativity; ++j)
+            if(ctrl.dirty[i][j] && ctrl.valid[i][j])
+                for(int k = 0; k < Blocksize; ++k)
+                    dmem[ctrl.tag[i][j] | (i << ac::log2_ceil<Blocksize>::val) | k] = cachedata[i][j][k];
+    /*static int cycles = 0;
+    debug("%6d: ", cycles++);
     if(instruction)
     {
         const char* ins;
@@ -392,16 +405,16 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
             ins = "???";
             break;
         }
-        debug("%04x    %8s    %04x(%d)    R:%04x W:%04x(%d)    ",
-               iaddress-1, ins, ldaddress, cacheenable, readvalue, writevalue, datavalid);
+        debug("%04x    %8s    %s:%04x(%d)    @%04x(%d)     ",
+               iaddress-1, ins, writeenable?"W":"R", writeenable?writevalue:readvalue, datavalid, ldaddress, cacheenable);
         for(int i(0); i<16;++i)
             debug("%08x ", reg[i]);
         debug("\n");
     }
     else
     {
-        debug("%04x    %8s    %04x(%d)    R:%04x W:%04x(%d)\n",
-               iaddress-1, "nop", ldaddress, cacheenable, readvalue, writevalue, datavalid);
-    }
+        debug("%04x    %8s    %s:%04x(%d)    @%04x(%d)     \n",
+               iaddress-1, "nop", writeenable?"W":"R", writeenable?writevalue:readvalue, datavalid, ldaddress, cacheenable);
+    }*/
 #endif
 }

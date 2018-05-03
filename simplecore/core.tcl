@@ -25,7 +25,7 @@ directive set -DESIGN_GOAL area
 directive set -OLD_SCHED false
 directive set -SPECULATE true
 directive set -MERGEABLE true
-directive set -REGISTER_THRESHOLD 64 
+directive set -REGISTER_THRESHOLD 4096 
 directive set -MEM_MAP_THRESHOLD 32
 directive set -FSM_ENCODING none
 directive set -REG_MAX_FANOUT 0
@@ -66,6 +66,9 @@ directive set -CLOCKS {clk {-CLOCK_PERIOD 1.5 -CLOCK_EDGE rising -CLOCK_HIGH_TIM
 go assembly
 directive set /simplecachedcore/core/main -PIPELINE_INIT_INTERVAL 1
 directive set /simplecachedcore/core/reg:rsc -MAP_TO_MODULE {[Register]}
+directive set /simplecachedcore/core/ctrl.tag:rsc -MAP_TO_MODULE {[Register]}
+directive set /simplecachedcore/core/ctrl.dirty:rsc -MAP_TO_MODULE {[Register]}
+directive set /simplecachedcore/core/ctrl.valid:rsc -MAP_TO_MODULE {[Register]}
 directive set /simplecachedcore/core -CLOCK_OVERHEAD 1.0
 go architect
 //ignore_memory_precedences -from read_mem() -to ...    // use this? dangerous if real dependency

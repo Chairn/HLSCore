@@ -9,5 +9,8 @@ I_HEADER=$(foreach f, $(HEADER), $f)
 testbench: $(S_FILES) $(I_HEADER)
 	g++ -o testbench.sim -Wall $(INC_PARAMS) $(S_FILES) $(VARS_CAT)
 
+debug: $(S_FILES) $(I_HEADER)
+	g++ -g -O0 -o testbench.sim -Wall $(INC_PARAMS) $(S_FILES) $(VARS_CAT)
+
 clean:
 	rm -rf *.o testbench
