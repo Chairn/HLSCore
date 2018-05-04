@@ -62,7 +62,7 @@ enum {
 
 struct CacheControl
 {
-    int tag[Sets][Associativity];
+    ac_int<32-tagshift, false> tag[Sets][Associativity];
     int wantedAddress;
     bool dirty[Sets][Associativity];
     bool valid[Sets][Associativity];
@@ -70,19 +70,54 @@ struct CacheControl
     bool enable;
     ac_int<ac::log2_ceil<Blocksize>::val, false> i;
     int valuetowrite;
-    int currentset;
-    int currentway;
+    ac_int<ac::log2_ceil<Sets>::val, false> currentset;
+#if Associativity > 1
+    ac_int<ac::log2_ceil<Associativity>::val, false> currentway;
+    ac_int<ac::log2_ceil<Associativity>::val, false> fifo[Sets];
+#else
+    ac_int<1, false> currentway;
+    ac_int<1, false> fifo[sets];
+#endif
 };
 
-void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocksize], int address, bool cacheenable, bool writeenable, int writevalue, int& read, bool& datavalid)
+bool find(CacheControl& ctrl, ac_int<32, true> address)
+{
+    bool found = false;
+    bool valid = false;
+    ctrl.currentset = (address & setmask) >> setshift;
+
+    #pragma hls_unroll yes
+    findloop:for(int i = 0; i < Associativity; ++i)
+    {
+        if((ctrl.tag[ctrl.currentset][i] == (address.slc<32-tagshift>(tagshift))) && ctrl.valid[ctrl.currentset][i])
+        {
+            found = true;
+            valid = true;
+            ctrl.currentway = i;
+        }
+    }
+
+    return found && valid;
+}
+
+void select_fifo(CacheControl& ctrl)
+{
+    ctrl.currentway = ctrl.fifo[ctrl.currentset]++;
+}
+
+void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocksize], ac_int<32, true> address, bool cacheenable, bool writeenable, int writevalue, int& read, bool& datavalid)
 {
     if(ctrl.enable)
     {
         if(ctrl.sens)   //cachetomem = writeback
         {
-            dmem[ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i] = ctrl.valuetowrite;
+            ac_int<32, true> ad;
+            ad.set_slc(tagshift, ctrl.tag[ctrl.currentset][ctrl.currentway]);
+            ad.set_slc(setshift, ctrl.currentset);
+            ad.set_slc(0, ctrl.i);
+            dmem[ad] = ctrl.valuetowrite;
 
-            debug("Writing back %04x to %04x \n", ctrl.valuetowrite, ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i.to_int());
+            debug("Writing back %04x to %04x \n", ctrl.valuetowrite, ad.to_int());
 
             if(++ctrl.i)
                 ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][ctrl.i];
@@ -118,10 +153,15 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
                 datavalid = false;
             }
 
-            debug("fetching %04x from %04x \n", ctrl.valuetowrite, ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i.to_int());
-
             if(++ctrl.i)
-                ctrl.valuetowrite = dmem[ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val) | ctrl.i];
+            {
+                ac_int<32, true> ad;
+                ad.set_slc(tagshift, ctrl.tag[ctrl.currentset][ctrl.currentway]);
+                ad.set_slc(setshift, ctrl.currentset);
+                ad.set_slc(0, ctrl.i);
+                ctrl.valuetowrite = dmem[ad];
+                debug("fetching %04x from %04x \n", ctrl.valuetowrite, ad.to_int());
+            }
             else
             {
                 ctrl.enable = false;
@@ -134,10 +174,9 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
     else if(cacheenable)
     {
         debug("cacheenable     ");
-        ctrl.currentset = (address & setmask) >> ac::log2_ceil<Blocksize>::val;
-        debug("%d %d    ", ctrl.currentset, ctrl.currentway);
-        if((ctrl.tag[ctrl.currentset][ctrl.currentway] == (address & tagmask)) && ctrl.valid[ctrl.currentset][ctrl.currentway])
+        if(find(ctrl, address))
         {
+            debug("%d %d    ", ctrl.currentset.to_int(), ctrl.currentway.to_int());
             debug("valid data   ");
             if(writeenable)
             {
@@ -151,10 +190,13 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
                 debug("R:%04x   ", read);
             }
             datavalid = true;
-            debug("@%04x\n", address);
+            debug("@%04x\n", address.to_int());
+
+            //update(ctrl);
         }
         else    // not found or invalid
         {
+            select_fifo(ctrl);
             debug("data not found or invalid   ");
             if(ctrl.dirty[ctrl.currentset][ctrl.currentway])
             {
@@ -166,13 +208,17 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
             }
             else
             {
-                ctrl.tag[ctrl.currentset][ctrl.currentway] = address & tagmask;
+                ctrl.tag[ctrl.currentset][ctrl.currentway].set_slc(0, address.slc<32-tagshift>(tagshift));
                 ctrl.wantedAddress = address;
                 ctrl.enable = true;
                 ctrl.sens = MemtoCache;
                 ctrl.valid[ctrl.currentset][ctrl.currentway] = false;
                 ctrl.i = 0;
-                ctrl.valuetowrite = dmem[ctrl.tag[ctrl.currentset][ctrl.currentway] | (ctrl.currentset << ac::log2_ceil<Blocksize>::val)];
+                ac_int<32, true> ad;
+                ad.set_slc(tagshift, ctrl.tag[ctrl.currentset][ctrl.currentway]);
+                ad.set_slc(setshift, ctrl.currentset);
+                ad.set_slc(0, (ac_int<setshift, true>)0);
+                ctrl.valuetowrite = dmem[ad];
                 debug("starting fetching\n");
             }
             datavalid = false;
@@ -371,7 +417,7 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
         for(int j = 0; j < Associativity; ++j)
             if(ctrl.dirty[i][j] && ctrl.valid[i][j])
                 for(int k = 0; k < Blocksize; ++k)
-                    dmem[ctrl.tag[i][j] | (i << ac::log2_ceil<Blocksize>::val) | k] = cachedata[i][j][k];
+                    dmem[(ctrl.tag[i][j] << tagshift) | (i << setshift) | k] = cachedata[i][j][k];
     /*static int cycles = 0;
     debug("%6d: ", cycles++);
     if(instruction)

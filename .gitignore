@@ -6,5 +6,5 @@
 *.sh
 *.swp
 *old*
-*/memories/*
-simplecore/simplecore/*
+**/memories/*
+simplecore/*/

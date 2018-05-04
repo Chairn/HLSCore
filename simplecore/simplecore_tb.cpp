@@ -14,6 +14,9 @@ CCS_MAIN(int argc, char **argv)
     cout << bitset<32>(setmask) << hex << "          " << setmask << endl;
     cout << bitset<32>(tagmask) << hex << "          " << tagmask << dec << endl;
 
+    cout << setshift << "        " << tagshift << endl;
+    cout << Size << "        " << Blocksize << "        " << Associativity << "        " << Sets << endl;
+
     assert((int)ac::log2_ceil<Blocksize>::val == (int)ac::log2_floor<Blocksize>::val);
     assert((int)ac::log2_ceil<Associativity>::val == (int)ac::log2_floor<Associativity>::val);
     assert((int)ac::log2_ceil<Sets>::val == (int)ac::log2_floor<Sets>::val);
@@ -53,7 +56,7 @@ CCS_MAIN(int argc, char **argv)
         if(dmem[0x1020] != 0x1020)
             break;
         i++;
-        if(i > 1e6)
+        if(i > 1e5)
             break;
     }
 
