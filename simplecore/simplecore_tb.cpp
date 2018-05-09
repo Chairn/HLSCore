@@ -17,6 +17,7 @@ CCS_MAIN(int argc, char **argv)
     cout << setshift << "        " << tagshift << endl;
     cout << Size << "        " << Blocksize << "        " << Associativity << "        " << Sets << endl;
 
+    assert(Associativity == 1 ? Policy == NONE : Policy != NONE);
     assert((int)ac::log2_ceil<Blocksize>::val == (int)ac::log2_floor<Blocksize>::val);
     assert((int)ac::log2_ceil<Associativity>::val == (int)ac::log2_floor<Associativity>::val);
     assert((int)ac::log2_ceil<Sets>::val == (int)ac::log2_floor<Sets>::val);
@@ -63,6 +64,8 @@ CCS_MAIN(int argc, char **argv)
     cout << "Result : " << res << " in " << i << " cycles" << endl;
     cout << "Result in memory : " << dmem[0] << "   " << dmem[0x1001] << "  " << dmem[0x1020] << endl;
     cout << "Expected result : " << 4095*4096/2 << endl;
+
+    cout << Size << "        " << Blocksize << "        " << Associativity << "        " << Sets << endl;
 
     CCS_RETURN(0);
 }
