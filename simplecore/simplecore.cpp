@@ -4,8 +4,12 @@
 #include <cstdio>
 
 #define debug(...)   printf(__VA_ARGS__)
+#define simul(...)   __VA_ARGS__
 #else
 #define debug(...)
+#define simul(...)
+#undef assert
+#define assert(a)
 #endif
 
 struct FtoDC
@@ -41,6 +45,7 @@ struct MemtoWB
 {
     int result; //Result to be written back
     int dest; //Register to be written at WB stage
+    ac_int<2, false> datasize;
     bool ldmem;
     bool out;
 };
@@ -89,8 +94,9 @@ struct CacheControl
     bool sens;
     bool enable;
     bool storecontrol;
+    bool storedata;
     ac_int<ac::log2_ceil<Blocksize>::val, false> i;
-    int valuetowrite;
+    ac_int<32> valuetowrite;
     ac_int<ac::log2_ceil<Sets>::val, false> currentset;
 #if Associativity == 1
     ac_int<1, false> currentway;
@@ -110,6 +116,82 @@ struct CacheControl
 
     SetControl setctrl;
 };
+
+void format(ac_int<32> address, ac_int<2, false> datasize, ac_int<32>& read)
+{
+    switch(address.slc<2>(0))   // address & offmask
+    {
+    case 0:
+        read >>= 0;
+        break;
+    case 1:
+        read >>= 8;
+        assert(datasize == 0 && "address misalignment");
+        break;
+    case 2:
+        read >>= 16;
+        assert(datasize <= 1 && "address misalignment");
+        break;
+    case 3:
+        read >>= 24;
+        assert(datasize == 0 && "address misalignment");
+        break;
+    }
+    switch(datasize)
+    {
+    case 0:
+        read &= 0x000000FF;
+        break;
+    case 1:
+        read &= 0x0000FFFF;
+        break;
+    case 2:
+        read &= 0xFFFFFFFF;
+        break;
+    case 3:
+        read &= 0xFFFFFFFF;
+        break;
+    }
+}
+
+void format(ac_int<32> address, ac_int<2, false> datasize, ac_int<32>& mem, ac_int<32> write)
+{
+    switch(address.slc<2>(0))
+    {
+    case 0:
+        switch(datasize)
+        {
+        case 0:
+            mem.set_slc(0, write.slc<8>(0));
+            break;
+        case 1:
+            mem.set_slc(8, write.slc<16>(0));
+            break;
+        case 2:
+            mem = write;
+            break;
+        case 3:
+            mem = write;
+            break;
+        }
+        break;
+    case 1:
+        mem.set_slc(8, write.slc<8>(0));
+        assert(datasize == 0 && "address misalignment");
+        break;
+    case 2:
+        if(datasize)
+            mem.set_slc(16, write.slc<16>(0));
+        else
+            mem.set_slc(16, write.slc<8>(0));
+        assert(datasize <= 1 && "address misalignment");
+        break;
+    case 3:
+        mem.set_slc(24, write.slc<8>(0));
+        assert(datasize == 0 && "address misalignment");
+        break;
+    }
+}
 
 bool find(CacheControl& ctrl, ac_int<32, true> address)
 {
@@ -195,7 +277,9 @@ void update_policy(CacheControl& ctrl)
 #endif
 }
 
-void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocksize], ac_int<32, true> address, bool cacheenable, bool writeenable, int writevalue, int& read, bool& datavalid
+void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocksize],      // control, memory and cachedata
+           ac_int<32, true> address, ac_int<2, false> datasize, bool cacheenable, bool writeenable, int writevalue,    // from cpu
+           int& read, bool& datavalid                                                       // to cpu
 #ifndef __SYNTHESIS__
            , int cycles
 #endif
@@ -203,8 +287,6 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
 {
     if(ctrl.storecontrol)
     {
-        update_policy(ctrl);    // more time here?
-
         #pragma hls_unroll yes
         storeset:for(int i = 0; i < Associativity; ++i)
         {
@@ -215,6 +297,15 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
             ctrl.policy[ctrl.currentset] = ctrl.setctrl.policy;
         #endif
         }
+
+        if(ctrl.storedata)
+        {
+            data[ctrl.currentset][ctrl.currentway][(ctrl.workAddress & (ac_int<32, true>)blockmask) >> 2] = ctrl.valuetowrite;
+            debug("%5d  Storing data %08x @%04x\n", cycles, ctrl.valuetowrite.to_int(),
+                  ((ctrl.tag[ctrl.currentset][ctrl.currentway] << (tagshift-2)) | (ctrl.currentset << (setshift-2)) | ((ctrl.workAddress & (ac_int<32, true>)blockmask) >> 2)).to_int());
+        }
+
+        ctrl.storedata = false;
         ctrl.storecontrol = false;
     }
     else if(ctrl.enable)
@@ -222,12 +313,17 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
         if(ctrl.sens)   //cachetomem = writeback
         {
             ac_int<32, true> ad;
-            ad.set_slc(tagshift, ctrl.workAddress.slc<32-tagshift>(tagshift));
-            ad.set_slc(setshift, ctrl.currentset);
+            ad.set_slc(30, (ac_int<2>)0);
+            ad.set_slc(tagshift-2, ctrl.workAddress.slc<32-tagshift>(tagshift));
+            ad.set_slc(setshift-2, ctrl.currentset);
             ad.set_slc(0, ctrl.i);
             dmem[ad] = ctrl.valuetowrite;
 
-            debug("Writing back %04x to %04x \n", ctrl.valuetowrite, ad.to_int());
+            simul(
+            for(unsigned int i(0); i < sizeof(int); ++i)
+            {
+                debug("writing back %02x to %04x (%04x)\n", (dmem[ad] >> (i*8))&0xFF, (ad.to_int() << 2) + i, ad.to_int());
+            });
 
             if(++ctrl.i)
                 ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][ctrl.i];
@@ -243,49 +339,53 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
         }
         else            //memtocache = fetch
         {
-            if(ctrl.i == (ctrl.workAddress & blockmask))
-            {
-                if(writeenable)
-                {
-                    data[ctrl.currentset][ctrl.currentway][ctrl.i] = writevalue;
-                    ctrl.setctrl.dirty[ctrl.currentway] = true;
-                }
-                else
-                {
-                    data[ctrl.currentset][ctrl.currentway][ctrl.i] = ctrl.valuetowrite;
-                    read = ctrl.valuetowrite;
-                    ctrl.setctrl.dirty[ctrl.currentway] = false;
-                }
-                datavalid = true;
-            }
-            else
-            {
-                data[ctrl.currentset][ctrl.currentway][ctrl.i] = ctrl.valuetowrite;
-                datavalid = false;
-            }
+            data[ctrl.currentset][ctrl.currentway][ctrl.i] = ctrl.valuetowrite;
+            datavalid = false;
 
             if(++ctrl.i)
             {
                 ac_int<32, true> ad;
-                ad.set_slc(tagshift, ctrl.workAddress.slc<32-tagshift>(tagshift));
-                ad.set_slc(setshift, ctrl.currentset);
+                ad.set_slc(30, (ac_int<2>)0);
+                ad.set_slc(tagshift-2, ctrl.workAddress.slc<32-tagshift>(tagshift));
+                ad.set_slc(setshift-2, ctrl.currentset);
                 ad.set_slc(0, ctrl.i);
+
+                simul(
+                for(unsigned int i(0); i < sizeof(int); ++i)
+                {
+                    debug("fetching %02x from %04x (%04x)\n", (dmem[ad] >> (i*8))&0xFF, (ad.to_int() << 2) + i, ad.to_int());
+                });
+
                 ctrl.valuetowrite = dmem[ad];
-                debug("fetching %04x from %04x \n", ctrl.valuetowrite, ad.to_int());
+                if(ctrl.i == ctrl.workAddress.slc<ac::log2_ceil<Blocksize>::val>(2))
+                {
+                    if(writeenable)
+                    {
+                        format(address, datasize, ctrl.valuetowrite, writevalue);
+                        ctrl.setctrl.dirty[ctrl.currentway] = true;
+                    }
+                    else
+                    {
+                        format(address, datasize, ctrl.valuetowrite);
+                        read = ctrl.valuetowrite;
+                        ctrl.setctrl.dirty[ctrl.currentway] = false;
+                    }
+                    datavalid = true;
+                }
             }
             else
             {
                 ctrl.enable = false;
                 ctrl.setctrl.valid[ctrl.currentway] = true;
                 ctrl.storecontrol = true;
-                debug("end of fetch\n");
+                debug("end of fetch to %d %d\n", ctrl.currentset.to_int(), ctrl.currentway.to_int());
             }
         }
     }
     else if(cacheenable)
     {
         debug("%5d   cacheenable     ", cycles);
-        ctrl.currentset = (address & setmask) >> setshift;
+        ctrl.currentset = address.slc<tagshift-setshift>(setshift) ;//(address & setmask) >> setshift;
         #pragma hls_unroll yes
         loadset:for(int i = 0; i < Associativity; ++i)
         {
@@ -297,19 +397,37 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
         #endif
         }
 
+        // preload data? works only on direct mapped and for read
+        // but have to load anyway for write if writing less than a word(4 bytes currenly)
+
         if(find(ctrl, address))
         {
             debug("%2d %2d    ", ctrl.currentset.to_int(), ctrl.currentway.to_int());
             debug("valid data   ");
             if(writeenable)
             {
-                data[ctrl.currentset][ctrl.currentway][address & blockmask] = writevalue;
+                /*if(datasize == 2)                           //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?
+                    data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2] = writevalue;
+                else*/
+                {
+                    ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
+                    format(address, datasize, ctrl.valuetowrite, writevalue);
+                    ctrl.workAddress = address;
+                    ctrl.storedata = true;
+                }
                 ctrl.setctrl.dirty[ctrl.currentway] = true;
                 debug("W:%04x   ", writevalue);
+                debug("@%04x    ", address.slc<ac::log2_ceil<Blocksize>::val>(2).to_int());
             }
             else
-            {
-                read = data[ctrl.currentset][ctrl.currentway][address & blockmask];
+            {                                                //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?
+                ac_int<32> r = data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
+
+                debug("R:%04x   ", r.to_int());
+                debug("@%04x    ", address.to_int() >> 2);
+
+                format(address, datasize, r);
+                read = r;
                 debug("R:%04x   ", read);
             }
             datavalid = true;
@@ -329,6 +447,7 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
                 ctrl.i = 0;
                 ctrl.workAddress = ctrl.setctrl.tag[ctrl.currentway];
                 ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][0];
+                datavalid = false;
                 debug("starting writeback \n");
             }
             else
@@ -340,13 +459,34 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
                 ctrl.setctrl.valid[ctrl.currentway] = false;
                 ctrl.i = 0;
                 ac_int<32, true> ad;
-                ad.set_slc(tagshift, ctrl.setctrl.tag[ctrl.currentway]);
-                ad.set_slc(setshift, ctrl.currentset);
-                ad.set_slc(0, (ac_int<setshift, true>)0);
+                ad.set_slc(30, (ac_int<2>)0);
+                ad.set_slc(tagshift-2, ctrl.setctrl.tag[ctrl.currentway]);
+                ad.set_slc(setshift-2, ctrl.currentset);
+                ad.set_slc(0, (ac_int<setshift-2, true>)0);
+                debug("starting fetching for %s from %04x to %04x (%04x)\n", writeenable?"W":"R", ad.to_int() << 2, (int)(ad.to_int()+Blocksize) << 2, address.to_int());
                 ctrl.valuetowrite = dmem[ad];
-                debug("starting fetching for %s from %04x to %04x (%04x)\n", writeenable?"W":"R", ad.to_int(), ad.to_int()+Blocksize, address.to_int());
+                if(address.slc<ac::log2_ceil<Blocksize>::val>(2) == 0)  // if access to the 4 first bytes, fast forward it
+                {
+                    if(writeenable)
+                    {
+                        format(address, datasize, ctrl.valuetowrite, writevalue);
+                        ctrl.setctrl.dirty[ctrl.currentway] = true;
+                        debug("%5d  Storing data %08x @%04x\n", cycles, ctrl.valuetowrite.to_int(),
+                              ((ctrl.setctrl.tag[ctrl.currentway] << (tagshift-2)) | (ctrl.currentset << (setshift-2)) | ((ctrl.workAddress & (ac_int<32, true>)blockmask) >> 2)).to_int());
+                    }
+                    else
+                    {
+                        ac_int<32> r = ctrl.valuetowrite;
+                        format(address, datasize, r);
+                        read = r;
+                    }
+
+                    datavalid = true;
+                }
+                else
+                    datavalid = false;
+
             }
-            datavalid = false;
         }
     }
     else
@@ -392,12 +532,14 @@ void Dc(int instruction, DCtoEx& dte, int& lock, int reg[16])
         case 2:
             dctoex.opcode = LOADMEM;
             dctoex.dest = (instruction & 0xF0) >> 4;
-            dctoex.dataa = instruction >> 8;
+            dctoex.dataa = (instruction & 0xF00) >> 8;
+            dctoex.datab = (instruction & 0x3000) >> 12;
             break;
         case 3:
             dctoex.opcode = LOADMEM;
             dctoex.dest = (instruction & 0xF0) >> 4;
             dctoex.dataa = reg[(instruction & 0xF00) >> 8];
+            dctoex.datab = (instruction & 0x3000) >> 12;
             break;
         case 4:
             dctoex.opcode = PLUS;
@@ -421,6 +563,7 @@ void Dc(int instruction, DCtoEx& dte, int& lock, int reg[16])
             dctoex.opcode = OUT;
             dctoex.dataa = reg[(instruction & 0xF00) >> 8];
             dctoex.dest = instruction >> 16;
+            dctoex.datab = (instruction & 0x3000) >> 12;
             break;
         }
     }
@@ -441,6 +584,7 @@ void Ex(DCtoEx dctoex, MemtoWB& memtowb, int& pc)
     case LOADMEM:
         tomem.dest = dctoex.dest;
         tomem.result = dctoex.dataa;
+        tomem.datasize = dctoex.datab;
         tomem.ldmem = true;
         break;
     case PLUS:
@@ -459,13 +603,14 @@ void Ex(DCtoEx dctoex, MemtoWB& memtowb, int& pc)
         tomem.out = true;
         tomem.dest = dctoex.dest;
         tomem.result = dctoex.dataa;
+        tomem.datasize = dctoex.datab;
         break;
     }
     memtowb = tomem;
 }
 
 void Mem(int reg[16], MemtoWB memtowb,      // from core
-         int& address, bool& cacheenable, bool& writeenable, int& writevalue,       // to cache
+         int& address, ac_int<2,false>& datasize, bool& cacheenable, bool& writeenable, int& writevalue,       // to cache
          int datum, bool valid,             // from cache
          bool& memlock, int& res)
 {
@@ -485,6 +630,7 @@ void Mem(int reg[16], MemtoWB memtowb,      // from core
         if(memtowb.ldmem)
         {
             address = memtowb.result;
+            datasize = memtowb.datasize;
             cacheenable = true;
             memlock = true;
             writeenable = false;
@@ -494,6 +640,7 @@ void Mem(int reg[16], MemtoWB memtowb,      // from core
             res = memtowb.result;
             address = memtowb.dest;
             writevalue = memtowb.result;
+            datasize = memtowb.datasize;
             cacheenable = true;
             memlock = true;
             writeenable = true;
@@ -508,12 +655,23 @@ void Mem(int reg[16], MemtoWB memtowb,      // from core
     }
 }
 
-void simplecachedcore(int imem[N], int dmem[N], int& res)
+#ifndef __SYNTHESIS__
+bool
+#else
+void
+#endif
+simplecachedcore(int imem[N], int dmem[N], int& res)
 {
+    static int iaddress = 0;
 #ifndef __SYNTHESIS__
     static int cycles = 0;
+    if(iaddress > 8192)
+    {
+        debug("Out of instruction memory\n");
+        return true;
+    }
 #endif
-    static int iaddress = 0;
+
     static int reg[16] = {0};
     static int cachedata[Sets][Associativity][Blocksize] = {0};
     static bool dummy = ac::init_array<AC_VAL_DC>((int*)cachedata, Sets*Associativity*Blocksize);
@@ -522,6 +680,7 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
     static DCtoEx dctoex = {0};
     static int ldaddress = 0;
     static int readvalue = 0;
+    static ac_int<2, false> datasize;
     static int writevalue = 0;
     static int instruction = 0;
     static int branchjumplock = 0;
@@ -537,9 +696,11 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
     static bool valinit = ac::init_array<AC_VAL_0>((bool*)ctrl.valid, Sets*Associativity);
     (void)valinit;
 #if Policy == FIFO
-    static bool fifinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)ctrl.policy, Sets);
-    (void)fifinit;
+    static bool polinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)ctrl.policy, Sets);
+    (void)polinit;
 #elif Policy == LRU
+    static bool polinit = ac::init_array<AC_VAL_DC>((ac_int<Associativity * (Associativity-1) / 2, false>*)ctrl.policy, Sets);
+    (void)polinit;
 #elif Policy == RANDOM
     static bool rndinit = false;
     if(!rndinit)
@@ -549,25 +710,53 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
     }
 #endif
 
-    cache(ctrl, dmem, cachedata, ldaddress, cacheenable, writeenable, writevalue, readvalue, datavalid
+    cache(ctrl, dmem, cachedata, ldaddress, datasize, cacheenable, writeenable, writevalue, readvalue, datavalid
 #ifndef __SYNTHESIS__
           , cycles++
 #endif
           );
-    Mem(reg, memtowb, ldaddress, cacheenable, writeenable, writevalue, readvalue, datavalid, memlock, res);
+    Mem(reg, memtowb, ldaddress, datasize, cacheenable, writeenable, writevalue, readvalue, datavalid, memlock, res);
     if(!memlock)
     {
         Ex(dctoex, memtowb, iaddress);
         Dc(instruction, dctoex, branchjumplock, reg);
         Ft(imem, iaddress, instruction, branchjumplock);
     }
+
 #ifndef __SYNTHESIS__
     //cache write back for simulation
-    for(int i  = 0; i < Sets; ++i)
-        for(int j = 0; j < Associativity; ++j)
+    for(unsigned int i  = 0; i < Sets; ++i)
+        for(unsigned int j = 0; j < Associativity; ++j)
             if(ctrl.dirty[i][j] && ctrl.valid[i][j])
-                for(int k = 0; k < Blocksize; ++k)
-                    dmem[(ctrl.tag[i][j] << tagshift) | (i << setshift) | k] = cachedata[i][j][k];
+                for(unsigned int k = 0; k < Blocksize; ++k)
+                    dmem[(ctrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2)) | k] = cachedata[i][j][k];
+
+    if(cycles > 50000)
+    {
+        /*for(unsigned int i  = 0; i < Sets; ++i)
+            for(unsigned int j = 0; j < Associativity; ++j)
+                if(ctrl.dirty[i][j] && ctrl.valid[i][j])
+                {
+                    debug("%d   sync for simul  ", cycles);
+                    for(unsigned int k = 0; k < Blocksize; ++k)
+                    {
+                        ac_int<32, true> ad;
+                        ad.set_slc(30, (ac_int<2>)0);
+                        ad.set_slc(tagshift-2, ctrl.workAddress.slc<32-tagshift>(tagshift));
+                        ad.set_slc(setshift-2, ctrl.currentset);
+                        ad.set_slc(0, ctrl.i);
+                        dmem[(ctrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2)) | k] = cachedata[i][j][k];
+                        debug("%04x     %04x\n", ((ctrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2)) | k).to_int(), ad.to_int());
+                    }
+                    debug("\n");
+                }
+        ac_int<32, true> ad;
+        ad.set_slc(30, (ac_int<2>)0);
+        ad.set_slc(tagshift-2, ctrl.tag[1][3]);
+        ad.set_slc(setshift-2, (ac_int<ac::log2_ceil<Sets>::val, false>)3);
+        ad.set_slc(0, (ac_int<ac::log2_ceil<Blocksize>::val, false>)0);
+        debug("%5d   :   %08x   %08x\n", cycles, ((ctrl.tag[0][2] << (tagshift-2)) | (2 << (setshift-2) | 0)).to_int(), ad.to_int());*/
+    }
 
     /*debug("%6d: ", cycles);
     if(instruction)
@@ -612,5 +801,6 @@ void simplecachedcore(int imem[N], int dmem[N], int& res)
         debug("%04x    %8s    %s:%04x(%d)    @%04x(%d)     \n",
                iaddress-1, "nop", writeenable?"W":"R", writeenable?writevalue:readvalue, datavalid, ldaddress, cacheenable);
     }*/
+    return false;
 #endif
 }
