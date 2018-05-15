@@ -76,7 +76,7 @@ struct SetControl
   #if Policy == FIFO
     ac_int<ac::log2_ceil<Associativity>::val, false> policy;
   #elif Policy == LRU
-    ac_int<Associativity * (Associativity+1) / 2 + 1, false> policy;
+    ac_int<Associativity * (Associativity+1) / 2, false> policy;
   #elif Policy == RANDOM
     //ac_int<ac::log2_ceil<Associativity>::val, false> policy;
   #else   // None
@@ -406,18 +406,12 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
             debug("valid data   ");
             if(writeenable)
             {
-                /*if(datasize == 2)                           //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?
-                    data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2] = writevalue;
-                else*/
-                {
-                    ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
-                    format(address, datasize, ctrl.valuetowrite, writevalue);
-                    ctrl.workAddress = address;
-                    ctrl.storedata = true;
-                }
+                ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
+                format(address, datasize, ctrl.valuetowrite, writevalue);
+                ctrl.workAddress = address;
+                ctrl.storedata = true;
                 ctrl.setctrl.dirty[ctrl.currentway] = true;
                 debug("W:%04x   ", writevalue);
-                debug("@%04x    ", address.slc<ac::log2_ceil<Blocksize>::val>(2).to_int());
             }
             else
             {                                                //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?

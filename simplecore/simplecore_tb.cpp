@@ -56,7 +56,7 @@ CCS_MAIN(int argc, char **argv)
         if(CCS_DESIGN(simplecachedcore)(imem, dmem, res))
         {
             cout << "Simulation stopped unexpectedly at cycle " << i << endl;
-            break;
+            return 1;
         }
 
         if(CHECK_INT(0x1020, 0x1020))
