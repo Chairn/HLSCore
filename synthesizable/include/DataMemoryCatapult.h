@@ -8,28 +8,28 @@ class DataMemory
 
 public:
 
-    CORE_INT(32) memory[8192];
+    ac_int<32, true> memory[8192];
 
-    void set(CORE_UINT(32) address, CORE_INT(32) value, CORE_UINT(2) op)
+    void set(ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
     {
-        CORE_UINT(13) wrapped_address = address % 8192;
+        ac_int<13, false> wrapped_address = address % 8192;
         memory[wrapped_address >> 2] = value;
     }
 
-    CORE_INT(32) get(CORE_UINT(32) address, CORE_UINT(2) op,
-                     CORE_UINT(1) sign)
+    ac_int<32, true> get(ac_int<32, false> address, ac_int<2, false> op,
+                     ac_int<1, false> sign)
     {
-        CORE_UINT(13) wrapped_address = address % 8192;
-        CORE_UINT(2) offset = wrapped_address & 0x3;
-        CORE_UINT(13) location = wrapped_address >> 2;
-        CORE_INT(32) result;
+        ac_int<13, false> wrapped_address = address % 8192;
+        ac_int<2, false> offset = wrapped_address & 0x3;
+        ac_int<13, false> location = wrapped_address >> 2;
+        ac_int<32, true> result;
         result = sign ? -1 : 0;
-        CORE_INT(32) mem_read = memory[location];
+        ac_int<32, true> mem_read = memory[location];
         result=mem_read;
-        //CORE_INT(8) byte0 = mem_read.SLC(8,0);
-        //CORE_INT(8) byte1 = mem_read.SLC(8,8);
-        //CORE_INT(8) byte2 = mem_read.SLC(8,16);
-        //CORE_INT(8) byte3 = mem_read.SLC(8,24);
+        //ac_int<8, true> byte0 = mem_read.slc<8>(0);
+        //ac_int<8, true> byte1 = mem_read.slc<8>(8);
+        //ac_int<8, true> byte2 = mem_read.slc<8>(16);
+        //ac_int<8, true> byte3 = mem_read.slc<8>(24);
         /*switch(offset){
         	case 0:
         		break;
@@ -43,13 +43,13 @@ public:
         		byte0 = byte3;
         		break;
         }
-        result.SET_SLC(0,byte0);
+        result.set_slc(0,byte0);
         if(op & 1){
-        	result.SET_SLC(8,byte1);
+        	result.set_slc(8,byte1);
         }
         if(op & 2){
-        	result.SET_SLC(16,byte2);
-        	result.SET_SLC(24,byte3);
+        	result.set_slc(16,byte2);
+        	result.set_slc(24,byte3);
         }*/
         return result;
     }

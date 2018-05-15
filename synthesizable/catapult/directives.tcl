@@ -19,7 +19,7 @@ solution options set /Input/CompilerFlags {-D __CATAPULT__=1}
 solution options set /Input/SearchPath ../include
 flow package require /SCVerify
 solution file add ../src/core.cpp -type C++
-solution file add ../src/testbench.cpp -type C++
+//solution file add ../src/testbench.cpp -type C++ -exclude true
 solution file add ../src/syscall.cpp -type C++
 solution file add ../src/elfFile.cpp -type C++
 go new
@@ -47,7 +47,7 @@ directive set -BLOCK_SYNC none
 directive set -TRANSACTION_SYNC ready
 directive set -DATA_SYNC none
 directive set -RESET_CLEARS_ALL_REGS true
-directive set -CLOCK_OVERHEAD 20.000000
+directive set -CLOCK_OVERHEAD 5.000000
 directive set -OPT_CONST_MULTS use_library
 directive set -CHARACTERIZE_ROM false
 directive set -PROTOTYPE_ROM true
@@ -66,6 +66,7 @@ go libraries
 directive set -CLOCKS {clk {-CLOCK_PERIOD 1.66 -CLOCK_EDGE rising -CLOCK_UNCERTAINTY 0.0 -CLOCK_HIGH_TIME 0.83 -RESET_SYNC_NAME rst -RESET_ASYNC_NAME arst_n -RESET_KIND sync -RESET_SYNC_ACTIVE high -RESET_ASYNC_ACTIVE low -ENABLE_ACTIVE high}}
 go assembly
 directive set /doStep/core/REG:rsc -MAP_TO_MODULE {[Register]}
-directive set /doStep/core/doStep_label1 -PIPELINE_INIT_INTERVAL 1
+directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
 go architect
+go schedule
 go extract

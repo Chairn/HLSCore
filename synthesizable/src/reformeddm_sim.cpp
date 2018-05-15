@@ -26,21 +26,21 @@ class Simulator
 
 private:
     //counters
-    map<CORE_UINT(32), CORE_UINT(8) > ins_memorymap;
-    map<CORE_UINT(32), CORE_UINT(8) > data_memorymap;
-    CORE_UINT(32) nbcycle;
-    CORE_UINT(32) ins_addr;
+    map<ac_int<32, false>, ac_int<8, false> > ins_memorymap;
+    map<ac_int<32, false>, ac_int<8, false> > data_memorymap;
+    ac_int<32, false> nbcycle;
+    ac_int<32, false> ins_addr;
 
-    CORE_UINT(32) pc;
+    ac_int<32, false> pc;
 
 public:
-    CORE_INT(32)* ins_memory;
-    CORE_INT(32)* data_memory;
+    ac_int<32, true>* ins_memory;
+    ac_int<32, true>* data_memory;
 
     Simulator()
     {
-        ins_memory = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
-        data_memory = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
+        ins_memory = (ac_int<32, true> *)malloc(8192 * sizeof(ac_int<32, true>));
+        data_memory = (ac_int<32, true> *)malloc(8192 * sizeof(ac_int<32, true>));
         for(int i =0; i<8192; i++)
         {
             ins_memory[i]=0;
@@ -71,25 +71,25 @@ public:
         }
 
         //fill instruction memory
-        for(map<CORE_UINT(32), CORE_UINT(8) >::iterator it = ins_memorymap.begin(); it!=ins_memorymap.end(); ++it)
+        for(map<ac_int<32, false>, ac_int<8, false> >::iterator it = ins_memorymap.begin(); it!=ins_memorymap.end(); ++it)
         {
-            ins_memory[(it->first/4) % 8192].SET_SLC(((it->first)%4)*8,it->second);
+            ins_memory[(it->first/4) % 8192].set_slc(((it->first)%4)*8,it->second);
         }
 
         //fill data memory
-        for(map<CORE_UINT(32), CORE_UINT(8) >::iterator it = data_memorymap.begin(); it!=data_memorymap.end(); ++it)
+        for(map<ac_int<32, false>, ac_int<8, false> >::iterator it = data_memorymap.begin(); it!=data_memorymap.end(); ++it)
         {
             //data_memory.set_byte((it->first/4)%8192,it->second,it->first%4);
-            data_memory[(it->first%8192)/4].SET_SLC(((it->first%8192)%4)*8,it->second);
+            data_memory[(it->first%8192)/4].set_slc(((it->first%8192)%4)*8,it->second);
         }
     }
 
-    void setInstructionMemory(CORE_UINT(32) addr, CORE_INT(8) value)
+    void setInstructionMemory(ac_int<32, false> addr, ac_int<8, true> value)
     {
         ins_memorymap[addr] = value;
     }
 
-    void setDataMemory(CORE_UINT(32) addr, CORE_INT(8) value)
+    void setDataMemory(ac_int<32, false> addr, ac_int<8, true> value)
     {
         if((addr % 8192 )/4 == 0)
         {
@@ -98,23 +98,23 @@ public:
         data_memorymap[addr] = value;
     }
 
-    CORE_INT(32)* getInstructionMemory()
+    ac_int<32, true>* getInstructionMemory()
     {
         return ins_memory;
     }
 
 
-    CORE_INT(32)* getDataMemory()
+    ac_int<32, true>* getDataMemory()
     {
         return data_memory;
     }
 
-    void setPC(CORE_UINT(32) pc)
+    void setPC(ac_int<32, false> pc)
     {
         this->pc = pc;
     }
 
-    CORE_UINT(32) getPC()
+    ac_int<32, false> getPC()
     {
         return pc;
     }
@@ -124,7 +124,7 @@ public:
 
 int main()
 {
-    char* binaryFile = "benchmarks/build/matmul4_4.out";
+    const char* binaryFile = "benchmarks/build/matmul4_4.out";
     ElfFile elfFile(binaryFile);
     Simulator sim;
     int counter = 0;
@@ -165,26 +165,27 @@ int main()
 
 
     sim.fillMemory();
-//    CORE_INT(32)* dm_in;
-//    dm_in = sim.getDataMemory();
-    CORE_INT(32)* dm_out;
-    CORE_INT(32)* debug_out;
-    dm_out = (CORE_INT(32) *)malloc(8192 * sizeof(CORE_INT(32)));
-    debug_out = (CORE_INT(32) *)malloc(200 * sizeof(CORE_INT(32)));
-    int ins;
-    std::cin >> ins;
-    doStep(sim.getPC(),ins,sim.getInstructionMemory(),sim.getDataMemory(),dm_out);
-    /*for(int i = 0;i<34;i++){
-    	std::cout << std::dec << i << " : ";
-    	std::cout << std::hex << debug_out[i] << std::endl;
-    }*/
+    int dm_in[8192];
+    for(int i(0); i < 8192; ++i)
+        dm_in[i] = sim.getDataMemory()[i];
+
+    int cycles = 0;
+    bool exit = false;
+    while(!exit)
+    {
+        doStep(sim.getPC(), sim.getInstructionMemory(), sim.getDataMemory(), exit, cycles);
+        if(cycles > 1e4)
+            break;
+    }
+    debug("Successfully executed all instructions in %d cycles\n", cycles);
+
+    int dm[8192];
     std::cout << "dm" <<std::endl;
     for(int i = 0; i<8192; i++)
     {
-        std::cout << std::dec << i << " : ";
-        std::cout << std::dec << dm_out[i] << std::endl;
+        dm[i] = sim.getDataMemory()[i];
+        if(sim.getDataMemory()[i])
+            printf("%4x : %08x (%d)\n", i, dm[i], dm[i]);
     }
-    free(dm_out);
-    free(debug_out);
     return 0;
 }
