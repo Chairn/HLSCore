@@ -15,7 +15,25 @@ CCS_MAIN(int argc, char **argv)
     cout << bitset<32>(tagmask) << hex << "          " << tagmask << dec << endl;
 
     cout << setshift << "        " << tagshift << endl;
-    cout << Size << "        " << Blocksize << "        " << Associativity << "        " << Sets << endl;
+    cout << "Size : " << Size << "        Blocksize : " << Blocksize << "        Associativity : " << Associativity << "        Sets : " << Sets << endl;
+
+    ac_int<32, false> address = 0xF2F5;
+
+    cout << (32-tagshift + ac::log2_ceil<Sets>::val + ac::log2_ceil<Blocksize>::val) << endl;
+
+    cout << bitset<32-tagshift>(address >> tagshift) << " " << bitset<ac::log2_ceil<Sets>::val>(address >> setshift) << " " << bitset<ac::log2_ceil<Blocksize>::val>(address >> blockshift) << " " << bitset<2>(address) << hex << "   " << address.to_int() << endl;
+    cout << bitset<32-tagshift>(getTag(address).to_int()) << " " << bitset<ac::log2_ceil<Sets>::val>(0) << " " << bitset<ac::log2_ceil<Blocksize>::val>(0) << " " << bitset<2>(0) << hex << "   " << getTag(address).to_int() << endl;
+    cout << bitset<32-tagshift>(0) << " " << bitset<ac::log2_ceil<Sets>::val>(getSet(address).to_int()) << " " << bitset<ac::log2_ceil<Blocksize>::val>(0) << " " << bitset<2>(0) << hex << "   " << getSet(address).to_int() << endl;
+    cout << bitset<32-tagshift>(0) << " " << bitset<ac::log2_ceil<Sets>::val>(0) << " " << bitset<ac::log2_ceil<Blocksize>::val>(getOffset(address).to_int()) << " " << bitset<2>(0) << hex << "   " << getOffset(address).to_int() << endl << dec;
+
+    cout << endl;
+
+    address = 0;
+    setTag(address, 0xF2);
+    setSet(address, 7);
+    setOffset(address, 2);
+    cout << bitset<32>(address.to_int()) << endl;
+
 
     assert(Associativity == 1 ? Policy == NONE : Policy != NONE);
     assert((int)ac::log2_ceil<Blocksize>::val == (int)ac::log2_floor<Blocksize>::val);
@@ -24,7 +42,7 @@ CCS_MAIN(int argc, char **argv)
     assert((unsigned)(tagmask + setmask + blockmask + offmask) == 0xFFFFFFFF);
 
     int imem[N];
-    int dmem[N];
+    unsigned int dmem[N];
     int res = 0;
     int i;
     for(i = 0; i < N; ++i)
