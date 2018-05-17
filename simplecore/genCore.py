@@ -124,8 +124,9 @@ directive set /simplecachedcore/core/ctrl.dirty -WORD_WIDTH {associativity}
 directive set /simplecachedcore/core/ctrl.valid -RESOURCE ctrl.tag:rsc
 directive set /simplecachedcore/core/ctrl.valid -WORD_WIDTH {associativity}
 directive set /simplecachedcore/core/ctrl.policy -RESOURCE ctrl.tag:rsc
+
 go architect
-//ignore_memory_precedences -from read_mem() -to ...    // use this? dangerous if real dependency
+cycle add /simplecachedcore/core/core:rlp/main/loadset:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(ctrl.tag:rsc.@) -equal 0
 go schedule
 go extract
 project save {sets}x{ctrlwidth}core.ccs"""
