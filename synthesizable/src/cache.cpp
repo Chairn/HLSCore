@@ -1,6 +1,6 @@
 #include "cache.h"
 
-void format(ac_int<32> address, ac_int<2, false> datasize, ac_int<32>& read)
+void format(ac_int<32, false> address, ac_int<2, false> datasize, ac_int<32, false>& read)
 {
     switch(address.slc<2>(0))   // address & offmask
     {
@@ -37,7 +37,7 @@ void format(ac_int<32> address, ac_int<2, false> datasize, ac_int<32>& read)
     }
 }
 
-void format(ac_int<32> address, ac_int<2, false> datasize, ac_int<32>& mem, ac_int<32> write)
+void format(ac_int<32, false> address, ac_int<2, false> datasize, ac_int<32, false>& mem, ac_int<32, false> write)
 {
     switch(address.slc<2>(0))
     {
@@ -76,7 +76,7 @@ void format(ac_int<32> address, ac_int<2, false> datasize, ac_int<32>& mem, ac_i
     }
 }
 
-bool find(CacheControl& ctrl, ac_int<32, true> address)
+bool find(CacheControl& ctrl, ac_int<32, false> address)
 {
     bool found = false;
     bool valid = false;
@@ -84,7 +84,7 @@ bool find(CacheControl& ctrl, ac_int<32, true> address)
     #pragma hls_unroll yes
     findloop:for(int i = 0; i < Associativity; ++i)
     {
-        if((ctrl.setctrl.tag[i] == (address.slc<32-tagshift>(tagshift))) && ctrl.setctrl.valid[i])
+        if((ctrl.setctrl.tag[i] == getTag(address)) && ctrl.setctrl.valid[i])
         {
             found = true;
             valid = true;
@@ -160,18 +160,149 @@ void update_policy(CacheControl& ctrl)
 #endif
 }
 
-void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocksize],      // control, memory and cachedata
-           ac_int<32, true> address, ac_int<2, false> datasize, bool cacheenable, bool writeenable, int writevalue,    // from cpu
+void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blocksize][Associativity],      // control, memory and cachedata
+           ac_int<32, false> address, ac_int<2, false> datasize, bool cacheenable, bool writeenable, int writevalue,    // from cpu
            int& read, bool& datavalid                                                       // to cpu
 #ifndef __SYNTHESIS__
            , int cycles
 #endif
            )
 {
-    if(ctrl.storecontrol)
+    ac_int<32, false> bytead;
+    switch(ctrl.state)
     {
+    case Idle:
+        if(cacheenable)
+        {
+            //debug("%5d  ", cycles);
+            //debug("%5d   cacheenable     ", cycles);
+            ctrl.currentset = getSet(address);//(address & setmask) >> setshift;
+            ctrl.i = getOffset(address);
+            #pragma hls_unroll yes
+            loadset:for(int i = 0; i < Associativity; ++i)
+            {
+                ctrl.setctrl.data[i] = data[ctrl.currentset][ctrl.i][i];
+                ctrl.setctrl.tag[i] = ctrl.tag[ctrl.currentset][i];
+                ctrl.setctrl.dirty[i] = ctrl.dirty[ctrl.currentset][i];
+                ctrl.setctrl.valid[i] = ctrl.valid[ctrl.currentset][i];
+            #if Policy == FIFO || Policy == LRU
+                ctrl.setctrl.policy = ctrl.policy[ctrl.currentset];
+            #endif
+            }
+
+            if(find(ctrl, address))
+            {
+                /*debug("%2d %2d    ", ctrl.currentset.to_int(), ctrl.currentway.to_int());
+                debug("valid data   ");*/
+                if(writeenable)
+                {
+                    ctrl.valuetowrite = ctrl.setctrl.data[ctrl.currentway];//data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
+                    format(address, datasize, ctrl.valuetowrite, writevalue);
+                    ctrl.workAddress = address;
+                    ctrl.setctrl.dirty[ctrl.currentway] = true;
+                    /*simul(
+                    switch(datasize)
+                    {
+                    case 0:
+                        debug("W:      %02x   ", writevalue);
+                        break;
+                    case 1:
+                        debug("W:    %04x   ", writevalue);
+                        break;
+                    case 2:
+                    case 3:
+                        debug("W:%08x   ", writevalue);
+                        break;
+                    }
+                    );*/
+
+                    ctrl.state = StoreData;
+                    debug("memory enable    W:%08x  @%04x   S:%d\n", writevalue, ((address % 8192) >> 2).to_int(), datasize.to_int());
+                }
+                else
+                {                                                //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?
+                    ac_int<32, false> r = ctrl.setctrl.data[ctrl.currentway];//data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
+                    //debug("%08x (%08x)", r.to_int(), data[ctrl.currentset][ctrl.currentway][ctrl.i]);
+                    format(address, datasize, r);
+
+                    read = r;
+                    /*simul(
+                    switch(datasize)
+                    {
+                    case 0:
+                        debug("R:      %02x   ", read);
+                        break;
+                    case 1:
+                        debug("R:    %04x   ", read);
+                        break;
+                    case 2:
+                    case 3:
+                        debug("R:%08x   ", read);
+                        break;
+                    }
+                    );*/
+
+                    ctrl.state = StoreControl;
+                    debug("memory enable    R:%08x  @%04x   S:%d    %s\n", read, ((address % 8192) >> 2).to_int(), datasize.to_int(), 1?"true":"false");
+                }
+                datavalid = true;
+
+                /*debug("@%04x    ", address.to_int());
+                debug("(@%04x)\n", address.to_int() >> 2);*/
+
+                update_policy(ctrl);
+            }
+            else    // not found or invalid
+            {
+                select(ctrl);
+                //debug("data not found or invalid   ");
+                if(ctrl.setctrl.dirty[ctrl.currentway] && ctrl.setctrl.valid[ctrl.currentway])
+                {
+                    ctrl.state = WriteBack;
+                    ctrl.i = 0;
+                    ctrl.workAddress = ctrl.setctrl.tag[ctrl.currentway];
+                    ctrl.valuetowrite = ctrl.setctrl.data[ctrl.currentway];
+                    datavalid = false;
+                    //debug("starting writeback \n");
+                }
+                else
+                {
+                    ctrl.setctrl.tag[ctrl.currentway] = getTag(address);
+                    ctrl.workAddress = address;
+                    ctrl.state = Fetch;
+                    ctrl.setctrl.valid[ctrl.currentway] = false;
+                    ctrl.i = getOffset(address);
+                    ac_int<32, false> wordad;
+                    wordad.set_slc(0, address.slc<30>(2));
+                    wordad.set_slc(30, (ac_int<2, false>)0);
+                    //debug("starting fetching for %s from %04x to %04x (%04x)\n", writeenable?"W":"R", wordad.to_int() << 2, (int)(wordad.to_int()+Blocksize) << 2, address.to_int());
+                    ctrl.valuetowrite = dmem[wordad];
+                    // critical word first
+                    if(writeenable)
+                    {
+                        format(address, datasize, ctrl.valuetowrite, writevalue);
+                        ctrl.setctrl.dirty[ctrl.currentway] = true;
+                        //debug("%5d  Storing data %08x @%04x\n", cycles, ctrl.valuetowrite.to_int(), wordad.to_int());
+                        debug("memory enable    W:%08x  @%04x   S:%d\n", writevalue, ((address % 8192) >> 2).to_int(), datasize.to_int());
+                    }
+                    else
+                    {
+                        ac_int<32, false> r = ctrl.valuetowrite;
+                        format(address, datasize, r);
+                        read = r;
+                        debug("memory enable    R:%08x  @%04x   S:%d    %s\n", read, ((address % 8192) >> 2).to_int(), datasize.to_int(), 1?"true":"false");
+                    }
+
+                    datavalid = true;
+                }
+            }
+        }
+        else
+            datavalid = false;
+        break;
+    case StoreControl:
         #pragma hls_unroll yes
-        storeset:for(int i = 0; i < Associativity; ++i)
+        storecontrol:for(int i = 0; i < Associativity; ++i)
         {
             ctrl.tag[ctrl.currentset][i] = ctrl.setctrl.tag[i];
             ctrl.dirty[ctrl.currentset][i] = ctrl.setctrl.dirty[i];
@@ -181,194 +312,77 @@ void cache(CacheControl& ctrl, int dmem[N], int data[Sets][Associativity][Blocks
         #endif
         }
 
-        if(ctrl.storedata)
+        ctrl.state = Idle;
+        break;
+    case StoreData:
+        #pragma hls_unroll yes
+        storedata:for(int i = 0; i < Associativity; ++i)
         {
-            data[ctrl.currentset][ctrl.currentway][(ctrl.workAddress & (ac_int<32, true>)blockmask) >> 2] = ctrl.valuetowrite;
-            debug("%5d  Storing data %08x @%04x\n", cycles, ctrl.valuetowrite.to_int(),
-                  ((ctrl.tag[ctrl.currentset][ctrl.currentway] << (tagshift-2)) | (ctrl.currentset << (setshift-2)) | ((ctrl.workAddress & (ac_int<32, true>)blockmask) >> 2)).to_int());
+            ctrl.tag[ctrl.currentset][i] = ctrl.setctrl.tag[i];
+            ctrl.dirty[ctrl.currentset][i] = ctrl.setctrl.dirty[i];
+            ctrl.valid[ctrl.currentset][i] = ctrl.setctrl.valid[i];
+        #if Policy == FIFO || Policy == LRU
+            ctrl.policy[ctrl.currentset] = ctrl.setctrl.policy;
+        #endif
+        }                         //(ctrl.workAddress & (ac_int<32, true>)blockmask) >> 2
+        data[ctrl.currentset][getOffset(ctrl.workAddress)][ctrl.currentway] = ctrl.valuetowrite;
+
+        ctrl.state = Idle;
+        break;
+    case WriteBack:
+        //ac_int<32, false> bytead;
+        setTag(bytead, ctrl.setctrl.tag[ctrl.currentway]);
+        setSet(bytead, ctrl.currentset);
+        setOffset(bytead, ctrl.i);
+        dmem[bytead >> 2] = ctrl.valuetowrite;
+
+        simul(
+        for(unsigned int i(0); i < sizeof(int); ++i)
+        {
+            //debug("writing back %02x to %04x (%04x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, (bytead.to_int() << 2) + i, bytead.to_int());
+        });
+
+        if(++ctrl.i)
+            ctrl.valuetowrite = data[ctrl.currentset][ctrl.i][ctrl.currentway];
+        else
+        {
+            ctrl.state = StoreControl;
+            ctrl.setctrl.dirty[ctrl.currentway] = false;
+            //debug("end of writeback\n");
         }
 
-        ctrl.storedata = false;
-        ctrl.storecontrol = false;
-    }
-    else if(ctrl.enable)
-    {
-        if(ctrl.sens)   //cachetomem = writeback
+        datavalid = false;
+        break;
+    case Fetch:
+        data[ctrl.currentset][ctrl.i][ctrl.currentway] = ctrl.valuetowrite;
+        datavalid = false;
+
+        if(++ctrl.i != getOffset(ctrl.workAddress))
         {
-            ac_int<32, true> ad;
-            ad.set_slc(30, (ac_int<2>)0);
-            ad.set_slc(tagshift-2, ctrl.workAddress.slc<32-tagshift>(tagshift));
-            ad.set_slc(setshift-2, ctrl.currentset);
-            ad.set_slc(0, ctrl.i);
-            dmem[ad] = ctrl.valuetowrite;
+            ac_int<32, false> bytead;
+            setTag(bytead, ctrl.setctrl.tag[ctrl.currentway]);
+            setSet(bytead, ctrl.currentset);
+            setOffset(bytead, ctrl.i);
 
             simul(
             for(unsigned int i(0); i < sizeof(int); ++i)
             {
-                debug("writing back %02x to %04x (%04x)\n", (dmem[ad] >> (i*8))&0xFF, (ad.to_int() << 2) + i, ad.to_int());
+                //debug("fetching %02x from %04x (%04x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, (bytead.to_int()) + i, bytead.to_int() >> 2);
             });
 
-            if(++ctrl.i)
-                ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][ctrl.i];
-            else
-            {
-                ctrl.enable = false;
-                ctrl.setctrl.dirty[ctrl.currentway] = false;
-                ctrl.storecontrol = true;
-                debug("end of writeback\n");
-            }
-
-            datavalid = false;
+            ctrl.valuetowrite = dmem[bytead >> 2];
         }
-        else            //memtocache = fetch
+        else
         {
-            data[ctrl.currentset][ctrl.currentway][ctrl.i] = ctrl.valuetowrite;
-            datavalid = false;
-
-            if(++ctrl.i)
-            {
-                ac_int<32, true> ad;
-                ad.set_slc(30, (ac_int<2>)0);
-                ad.set_slc(tagshift-2, ctrl.workAddress.slc<32-tagshift>(tagshift));
-                ad.set_slc(setshift-2, ctrl.currentset);
-                ad.set_slc(0, ctrl.i);
-
-                simul(
-                for(unsigned int i(0); i < sizeof(int); ++i)
-                {
-                    debug("fetching %02x from %04x (%04x)\n", (dmem[ad] >> (i*8))&0xFF, (ad.to_int() << 2) + i, ad.to_int());
-                });
-
-                ctrl.valuetowrite = dmem[ad];
-                if(ctrl.i == ctrl.workAddress.slc<ac::log2_ceil<Blocksize>::val>(2))
-                {
-                    if(writeenable)
-                    {
-                        format(address, datasize, ctrl.valuetowrite, writevalue);
-                        ctrl.setctrl.dirty[ctrl.currentway] = true;
-                    }
-                    else
-                    {
-                        format(address, datasize, ctrl.valuetowrite);
-                        read = ctrl.valuetowrite;
-                        ctrl.setctrl.dirty[ctrl.currentway] = false;
-                    }
-                    datavalid = true;
-                }
-            }
-            else
-            {
-                ctrl.enable = false;
-                ctrl.setctrl.valid[ctrl.currentway] = true;
-                ctrl.storecontrol = true;
-                debug("end of fetch to %d %d\n", ctrl.currentset.to_int(), ctrl.currentway.to_int());
-            }
+            ctrl.state = StoreControl;
+            ctrl.setctrl.valid[ctrl.currentway] = true;
+            //debug("end of fetch to %d %d\n", ctrl.currentset.to_int(), ctrl.currentway.to_int());
         }
-    }
-    else if(cacheenable)
-    {
-        debug("%5d   cacheenable     ", cycles);
-        ctrl.currentset = address.slc<tagshift-setshift>(setshift) ;//(address & setmask) >> setshift;
-        #pragma hls_unroll yes
-        loadset:for(int i = 0; i < Associativity; ++i)
-        {
-            ctrl.setctrl.tag[i] = ctrl.tag[ctrl.currentset][i];
-            ctrl.setctrl.dirty[i] = ctrl.dirty[ctrl.currentset][i];
-            ctrl.setctrl.valid[i] = ctrl.valid[ctrl.currentset][i];
-        #if Policy == FIFO || Policy == LRU
-            ctrl.setctrl.policy = ctrl.policy[ctrl.currentset];
-        #endif
-        }
-
-        // preload data? works only on direct mapped and for read
-        // but have to load anyway for write if writing less than a word(4 bytes currenly)
-
-        if(find(ctrl, address))
-        {
-            debug("%2d %2d    ", ctrl.currentset.to_int(), ctrl.currentway.to_int());
-            debug("valid data   ");
-            if(writeenable)
-            {
-                ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
-                format(address, datasize, ctrl.valuetowrite, writevalue);
-                ctrl.workAddress = address;
-                ctrl.storedata = true;
-                ctrl.setctrl.dirty[ctrl.currentway] = true;
-                debug("W:%04x   ", writevalue);
-            }
-            else
-            {                                                //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?
-                ac_int<32> r = data[ctrl.currentset][ctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
-
-                debug("R:%04x   ", r.to_int());
-                debug("@%04x    ", address.to_int() >> 2);
-
-                format(address, datasize, r);
-                read = r;
-                debug("R:%04x   ", read);
-            }
-            datavalid = true;
-            debug("@%04x\n", address.to_int());
-
-            update_policy(ctrl);
-            ctrl.storecontrol = true;
-        }
-        else    // not found or invalid
-        {
-            select(ctrl);
-            debug("data not found or invalid   ");
-            if(ctrl.setctrl.dirty[ctrl.currentway] && ctrl.setctrl.valid[ctrl.currentway])
-            {
-                ctrl.enable = true;
-                ctrl.sens = CachetoMem;
-                ctrl.i = 0;
-                ctrl.workAddress = ctrl.setctrl.tag[ctrl.currentway];
-                ctrl.valuetowrite = data[ctrl.currentset][ctrl.currentway][0];
-                datavalid = false;
-                debug("starting writeback \n");
-            }
-            else
-            {
-                ctrl.setctrl.tag[ctrl.currentway].set_slc(0, address.slc<32-tagshift>(tagshift));
-                ctrl.workAddress = address;
-                ctrl.enable = true;
-                ctrl.sens = MemtoCache;
-                ctrl.setctrl.valid[ctrl.currentway] = false;
-                ctrl.i = 0;
-                ac_int<32, true> ad;
-                ad.set_slc(30, (ac_int<2>)0);
-                ad.set_slc(tagshift-2, ctrl.setctrl.tag[ctrl.currentway]);
-                ad.set_slc(setshift-2, ctrl.currentset);
-                ad.set_slc(0, (ac_int<setshift-2, true>)0);
-                debug("starting fetching for %s from %04x to %04x (%04x)\n", writeenable?"W":"R", ad.to_int() << 2, (int)(ad.to_int()+Blocksize) << 2, address.to_int());
-                ctrl.valuetowrite = dmem[ad];
-                if(address.slc<ac::log2_ceil<Blocksize>::val>(2) == 0)  // if access to the 4 first bytes, fast forward it
-                {
-                    if(writeenable)
-                    {
-                        format(address, datasize, ctrl.valuetowrite, writevalue);
-                        ctrl.setctrl.dirty[ctrl.currentway] = true;
-                        debug("%5d  Storing data %08x @%04x\n", cycles, ctrl.valuetowrite.to_int(),
-                              ((ctrl.setctrl.tag[ctrl.currentway] << (tagshift-2)) | (ctrl.currentset << (setshift-2)) | ((ctrl.workAddress & (ac_int<32, true>)blockmask) >> 2)).to_int());
-                    }
-                    else
-                    {
-                        ac_int<32> r = ctrl.valuetowrite;
-                        format(address, datasize, r);
-                        read = r;
-                    }
-
-                    datavalid = true;
-                }
-                else
-                    datavalid = false;
-
-            }
-        }
-    }
-    else
-    {
+        break;
+    default:
         datavalid = false;
+        ctrl.state = Idle;
+        break;
     }
 }
 

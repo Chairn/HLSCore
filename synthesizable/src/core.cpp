@@ -2,11 +2,11 @@
 #include "riscvISA.h"
 #include "core.h"
 #include "cache.h"
-#if defined(__SIMULATOR__) || defined(__DEBUG__)
+#ifndef __SYNTHESIS__
 #include "syscall.h"
 #endif
 
-void memorySet(ac_int<32, true> memory[8192], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
+void memorySet(unsigned int memory[8192], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
 {
     ac_int<13, false> wrapped_address = address % 8192;
     ac_int<32, true> byte0 = value.slc<8>(0);
@@ -40,10 +40,11 @@ void memorySet(ac_int<32, true> memory[8192], ac_int<32, false> address, ac_int<
     /*this will synthesize in catapult */
 #ifdef __CATAPULT__
     memory[location] = value;
+    debug("memory enable    W:%08x  @%04x   S:%d\n", value.to_int(), location.to_int(), op.to_int());
 #endif
 }
 
-ac_int<32, true> memoryGet(ac_int<32, true> memory[8192], ac_int<32, false> address, ac_int<2, false> op, bool sign)
+ac_int<32, true> memoryGet(unsigned int memory[8192], ac_int<32, false> address, ac_int<2, false> op, bool sign)
 {
     ac_int<13, false> wrapped_address = address % 8192;
     ac_int<2, false> offset = wrapped_address & 0x3;
@@ -81,12 +82,13 @@ ac_int<32, true> memoryGet(ac_int<32, true> memory[8192], ac_int<32, false> addr
         result.set_slc(16,byte2);
         result.set_slc(24,byte3);
     }
+
+    debug("memory enable    R:%08x  @%04x   S:%d    %s\n", result.to_int(), location.to_int(), op.to_int(), sign?"true":"false");
     return result;
 }
 
 void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, ac_int<32, true> ins_memory[8192], FtoDC& ftoDC, ac_int<3, false> mem_lock)
 {
-
     ac_int<32, false> next_pc;
     if(freeze_fetch)
     {
@@ -132,7 +134,6 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, ac_int<32, tr
 void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB, DCtoEx& dctoEx, ac_int<7, false>& prev_opCode,
         ac_int<32, false>& prev_pc, ac_int<3, false> mem_lock, bool& freeze_fetch, bool& ex_bubble)
 {
-
     ac_int<5, false> rs1 = ftoDC.instruction.slc<5>(15);       // Decoding the instruction, in the DC stage
     ac_int<5, false> rs2 = ftoDC.instruction.slc<5>(20);
     ac_int<5, false> rd = ftoDC.instruction.slc<5>(7);
@@ -188,25 +189,25 @@ void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB,
         dctoEx.datab = imm31_12;
         break;
     case RISCV_AUIPC:
-        dctoEx.dest=rd;
+        dctoEx.dest = rd;
         dctoEx.datab = imm31_12;
         break;
     case RISCV_JAL:
-        dctoEx.dest=rd;
+        dctoEx.dest = rd;
         dctoEx.datab = imm21_1_signed;
         break;
     case RISCV_JALR:
-        dctoEx.dest=rd;
+        dctoEx.dest = rd;
         dctoEx.datab = imm12_I_signed;
         break;
     case RISCV_BR:
-        dctoEx.rs2=rs2;
+        dctoEx.rs2 = rs2;
         datab_fwd = 1;
         dctoEx.datac = imm13_signed;
         dctoEx.dest = 0;
         break;
     case RISCV_LD:
-        dctoEx.dest=rd;
+        dctoEx.dest = rd;
         dctoEx.memValue = imm12_I_signed;
         break;
     case RISCV_ST:
@@ -220,9 +221,9 @@ void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB,
         dctoEx.datab = imm12_I;
         break;
     case RISCV_OP:
-        dctoEx.rs2=rs2;
+        dctoEx.rs2 = rs2;
         datab_fwd = 1;
-        dctoEx.dest=rd;
+        dctoEx.dest = rd;
         break;
 #ifndef __SYNTHESIS__
     case RISCV_SYSTEM:
@@ -251,6 +252,7 @@ void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB,
         dctoEx.datab = (forward_rs2 && rs2 != 0) ? (forward_ex_or_mem_rs2 ? extoMem.result : memtoWB.result) : reg_rs2;
     }
 
+    // stall 1 cycle if RAW dependency? if load to one of the register we use?
     if(prev_opCode == RISCV_LD && (extoMem.dest == rs1 || (opcode != RISCV_LD && extoMem.dest == rs2)) && mem_lock < 2 && prev_pc != ftoDC.pc)
     {
         freeze_fetch = 1;
@@ -262,7 +264,6 @@ void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB,
 
 void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_int<2, false>& sys_status)
 {
-
     ac_int<32, false> unsignedReg1;
     unsignedReg1.set_slc(0,(dctoEx.dataa).slc<32>(0));
     ac_int<32, false> unsignedReg2;
@@ -307,16 +308,16 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
         switch(dctoEx.funct3)
         {
         case RISCV_BR_BEQ:
-            extoMem.result = (dctoEx.dataa== dctoEx.datab);
+            extoMem.result = (dctoEx.dataa == dctoEx.datab);
             break;
         case RISCV_BR_BNE:
-            extoMem.result = (dctoEx.dataa!= dctoEx.datab);
+            extoMem.result = (dctoEx.dataa != dctoEx.datab);
             break;
         case RISCV_BR_BLT:
-            extoMem.result = (dctoEx.dataa< dctoEx.datab);
+            extoMem.result = (dctoEx.dataa < dctoEx.datab);
             break;
         case RISCV_BR_BGE:
-            extoMem.result = (dctoEx.dataa>= dctoEx.datab);
+            extoMem.result = (dctoEx.dataa >= dctoEx.datab);
             break;
         case RISCV_BR_BLTU:
             extoMem.result = (unsignedReg1 < unsignedReg2);
@@ -357,7 +358,7 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
             extoMem.result = dctoEx.dataa & dctoEx.memValue;
             break;
         case RISCV_OPI_SLLI:
-            extoMem.result=  dctoEx.dataa << dctoEx.shamt;
+            extoMem.result = dctoEx.dataa << dctoEx.shamt;
             break;
         case RISCV_OPI_SRI:
             if (dctoEx.funct7_smaller == RISCV_OPI_SRI_SRLI)
@@ -453,9 +454,27 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
     ex_bubble = 0;
 }
 
-void do_Mem(ac_int<32, true> data_memory[8192], ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool& mem_bubble, bool& wb_bubble)
+void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool& mem_bubble, bool& wb_bubble, bool& cachelock,  // internal core control
+            ac_int<32, false>& address, ac_int<2, false>& datasize, bool& cacheenable, bool& writeenable, int& writevalue,       // control & data to cache
+            int readvalue, bool datavalid, unsigned int data_memory[8192]           // data & acknowledgment from cache
+            #ifndef __SYNTHESIS__
+            , int cycles
+            #endif
+            )
 {
-    if(mem_bubble)
+    if(cachelock)
+    {
+        if(datavalid)
+        {
+            memtoWB.WBena = extoMem.WBena;
+            if(!writeenable)
+                memtoWB.result = readvalue;
+            cachelock = false;
+            cacheenable = false;
+            writeenable = false;
+        }
+    }
+    else if(mem_bubble)
     {
         mem_bubble = 0;
         //wb_bubble = 1;
@@ -477,8 +496,6 @@ void do_Mem(ac_int<32, true> data_memory[8192], ExtoMem extoMem, MemtoWB& memtoW
         memtoWB.opCode = extoMem.opCode;
         memtoWB.result = extoMem.result;
 
-        ac_int<2, false> st_op = 0;
-        ac_int<2, false> ld_op = 0;
         bool sign = 0;
 
         if(mem_lock == 0)
@@ -505,42 +522,62 @@ void do_Mem(ac_int<32, true> data_memory[8192], ExtoMem extoMem, MemtoWB& memtoW
                 switch(extoMem.funct3)
                 {
                 case RISCV_LD_LW:
-                    ld_op = 3;
+                    datasize = 3;
                     sign = 1;
                     break;
                 case RISCV_LD_LH:
-                    ld_op = 1;
+                    datasize = 1;
                     sign = 1;
                     break;
                 case RISCV_LD_LHU:
-                    ld_op = 1;
+                    datasize = 1;
                     sign = 0;
                     break;
                 case RISCV_LD_LB:
-                    ld_op = 0;
+                    datasize = 0;
                     sign = 1;
                     break;
                 case RISCV_LD_LBU:
-                    ld_op = 1;
+                    datasize = 1;
                     sign = 0;
                     break;
                 }
-                memtoWB.result = memoryGet(data_memory, memtoWB.result, ld_op, sign);
+#define docache
+#ifdef docache
+                address = memtoWB.result % 8192;
+                cacheenable = true;
+                writeenable = false;
+                cachelock = true;
+                memtoWB.WBena = false;
+#else
+                //debug("%5d  ", cycles);
+                memtoWB.result = memoryGet(data_memory, memtoWB.result, datasize, sign);
+#endif
                 break;
             case RISCV_ST:
                 switch(extoMem.funct3)
                 {
                 case RISCV_ST_STW:
-                    st_op = 3;
+                    datasize = 3;
                     break;
                 case RISCV_ST_STH:
-                    st_op = 1;
+                    datasize = 1;
                     break;
                 case RISCV_ST_STB:
-                    st_op = 0;
+                    datasize = 0;
                     break;
                 }
-                memorySet(data_memory, memtoWB.result, extoMem.datac, st_op);
+#ifdef docache
+                address = memtoWB.result % 8192;
+                cacheenable = true;
+                writeenable = true;
+                writevalue = extoMem.datac;
+                cachelock = true;
+                memtoWB.WBena = false;
+#else
+                //debug("%5d  ", cycles);
+                memorySet(data_memory, memtoWB.result, extoMem.datac, datasize);
+#endif
                 //data_memory[(memtoWB.result/4)%8192] = extoMem.datac;
                 break;
             }
@@ -569,12 +606,36 @@ void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& earl
 #endif
 }
 
-void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], ac_int<32, true> dm[8192], bool& exit
+void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], unsigned int dm[8192], bool& exit
 #ifndef __SYNTHESIS__
-    , int& cycles
+    , int cycles
 #endif
 )
 {
+    static CacheControl cachectrl = {0};
+    static unsigned int cachedata[Sets][Blocksize][Associativity] = {0};
+    static bool dummy = ac::init_array<AC_VAL_DC>((unsigned int*)cachedata, Sets*Associativity*Blocksize);
+    (void)dummy;
+    static bool taginit = ac::init_array<AC_VAL_DC>((ac_int<32-tagshift, false>*)cachectrl.tag, Sets*Associativity);
+    (void)taginit;
+    static bool dirinit = ac::init_array<AC_VAL_DC>((bool*)cachectrl.dirty, Sets*Associativity);
+    (void)dirinit;
+    static bool valinit = ac::init_array<AC_VAL_0>((bool*)cachectrl.valid, Sets*Associativity);
+    (void)valinit;
+#if Policy == FIFO
+    static bool polinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)cachectrl.policy, Sets);
+    (void)polinit;
+#elif Policy == LRU
+    static bool polinit = ac::init_array<AC_VAL_DC>((ac_int<Associativity * (Associativity-1) / 2, false>*)cachectrl.policy, Sets);
+    (void)polinit;
+#elif Policy == RANDOM
+    static bool rndinit = false;
+    if(!rndinit)
+    {
+        rndinit = true;
+        cachectrl.policy = 0xF2D4B698;
+    }
+#endif
     static MemtoWB memtoWB = {0};
     static ExtoMem extoMem = {0};
     static DCtoEx dctoEx = {0};
@@ -590,58 +651,73 @@ void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], ac_int
     static ac_int<32, false> prev_pc = 0;
 
     static ac_int<3, false> mem_lock = 0;
-    static bool early_exit = 0;
+    static bool early_exit = false;
 
-    static bool freeze_fetch = 0;
-    static bool ex_bubble = 0;
-    static bool mem_bubble = 0;
-    static bool wb_bubble = 0;
+    static bool freeze_fetch = false;
+    static bool ex_bubble = false;
+    static bool mem_bubble = false;
+    static bool wb_bubble = false;
+    static bool cachelock = false;
     static ac_int<32, false> pc;
-
-
     static bool init = false;
     if(!init)
     {
         init = true;
         pc = startpc;
-        /*memtoWB.WBena = 0;
-        memtoWB.dest = 0;
-        memtoWB.opCode = 0;
-        extoMem.opCode = 0;
-        extoMem.sys_status = 0;
-        dctoEx.opCode = 0;
-
-        dctoEx.dataa = 0; //First data from register file
-        dctoEx.datab = 0; //Second data, from register file or immediate value
-        dctoEx.datac = 0;
-        dctoEx.datad = 0; //Third data used only for store instruction and corresponding to rb
-        dctoEx.dest = 0; //Register to be written
-
-        for(int i = 0; i<32; i++)
-        {
-            REG[i] = 0;
-        }
-
-        REG[2] = 0xf00000;
-        sys_status = 0;*/
     }
 
-    debug("%d;%x;%08x ", cycles++, (int)pc, (int)ins_memory[(pc & 0x0FFFF)/4]);
-
-    doWB(REG, memtoWB, wb_bubble, early_exit);
-    do_Mem(dm, extoMem, memtoWB, mem_lock, mem_bubble, wb_bubble);
-    Ex(dctoEx, extoMem, ex_bubble, mem_bubble, sys_status);
-    DC(REG, ftoDC, extoMem, memtoWB, dctoEx, prev_opCode, prev_pc, mem_lock, freeze_fetch, ex_bubble);
-    Ft(pc,freeze_fetch, extoMem, ins_memory, ftoDC, mem_lock);
-
-    /*simul(
+    static ac_int<32, false> address = 0;
+    static ac_int<2, false> datasize = 0;
+    static bool cacheenable = false;
+    static bool writeenable = false;
+    static int writevalue = 0;
+    static int readvalue = 0;
+    static bool datavalid = false;
+    /*debug("%d;%x;%08x ", ++cycles, (int)pc, (int)ins_memory[(pc & 0x0FFFF)/4]);
+    simul(
     for(int i=0; i<32; i++)
     {
         debug(";%08x",(int)REG[i]);
     }
-    )*/
-    debug("\n");
+    )
+    debug("\n");*/
+
+    doWB(REG, memtoWB, wb_bubble, early_exit);
+
+
+    do_Mem(extoMem, memtoWB, mem_lock, mem_bubble, wb_bubble, cachelock,    // internal core control
+           address, datasize, cacheenable, writeenable, writevalue,         // control & data to cache
+           readvalue, datavalid, dm
+       #ifndef __SYNTHESIS__
+           , cycles
+       #endif
+           );       // data & acknowledgment from cache
+    cache(cachectrl, dm, cachedata, address, datasize, cacheenable, writeenable, writevalue, readvalue, datavalid
+      #ifndef __SYNTHESIS__
+          , cycles
+      #endif
+          );
+
+
+    if(!cachelock)
+    {
+        Ex(dctoEx, extoMem, ex_bubble, mem_bubble, sys_status);
+        DC(REG, ftoDC, extoMem, memtoWB, dctoEx, prev_opCode, prev_pc, mem_lock, freeze_fetch, ex_bubble);
+        Ft(pc,freeze_fetch, extoMem, ins_memory, ftoDC, mem_lock);
+    }
+
+
 
     if(early_exit)
+    {
         exit = true;
+     simul(
+        //cache write back for simulation
+        for(unsigned int i  = 0; i < Sets; ++i)
+            for(unsigned int j = 0; j < Associativity; ++j)
+                if(cachectrl.dirty[i][j] && cachectrl.valid[i][j])
+                    for(unsigned int k = 0; k < Blocksize; ++k)
+                        dm[(cachectrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2)) | k] = cachedata[i][k][j];
+    )
+    }
 }

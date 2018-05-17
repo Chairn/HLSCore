@@ -14,6 +14,9 @@ I_HEADER=$(foreach f, $(HEADER), $(INC)/$f)
 catapult.sim: $(S_FILES) $(I_HEADER)
 	g++ -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT)
 
+debug: $(S_FILES) $(I_HEADER)
+	g++ -g -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT)
+
 vivado.sim: $(S_FILES) $(I_HEADER) 
 	g++ -o vivado.sim $(INC_PARAMS) $(S_FILES) $(VARS_VIV)
 

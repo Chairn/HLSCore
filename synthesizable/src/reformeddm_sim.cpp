@@ -170,22 +170,26 @@ int main()
     for(int i(0); i < 8192; ++i)
         dm_in[i] = sim.getDataMemory()[i];
 
-    int cycles = 0;
+    unsigned int dm[8192];
+    for(int i = 0; i<8192; i++)
+    {
+        dm[i] = sim.getDataMemory()[i];
+    }
+
+    int cycles = 1;
     bool exit = false;
     while(!exit)
     {
-        doStep(sim.getPC(), sim.getInstructionMemory(), sim.getDataMemory(), exit, cycles);
+        doStep(sim.getPC(), sim.getInstructionMemory(), dm, exit, cycles++);
         if(cycles > 1e4)
             break;
     }
     debug("Successfully executed all instructions in %d cycles\n", cycles);
 
-    int dm[8192];
     std::cout << "dm" <<std::endl;
     for(int i = 0; i<8192; i++)
     {
-        dm[i] = sim.getDataMemory()[i];
-        if(sim.getDataMemory()[i])
+        if(dm[i])
             printf("%4x : %08x (%d)\n", i, dm[i], dm[i]);
     }
     return 0;

@@ -59,18 +59,19 @@ genCore = """project set -incr_directory {sets}x{ctrlwidth}cachedcore
 solution options set Project/ProjectNamePrefix SimpleCore
 solution new -state initial
 solution options set /Input/CompilerFlags {{-D __CATAPULT__=1}}
-//solution options set /Input/SearchPath ../include
+solution options set /Input/SearchPath ../include
 flow package require /SCVerify
-solution file add simplecore.cpp -type C++
-solution file add simplecore_tb.cpp -type C++ -exclude true
+solution file add ../src/core.cpp -type C++
+solution file add ../src/cache.cpp -type C++
 go new
-solution file set ./simplecore.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
+solution file set ../src/core.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
+solution file set ../src/cache.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
 directive set -DESIGN_GOAL area
 directive set -OLD_SCHED false
 directive set -SPECULATE true
 directive set -MERGEABLE true
 directive set -REGISTER_THRESHOLD 4096 
-directive set -MEM_MAP_THRESHOLD 32
+directive set -MEM_MAP_THRESHOLD 64
 directive set -FSM_ENCODING none
 directive set -REG_MAX_FANOUT 0
 directive set -NO_X_ASSIGNMENTS true
@@ -100,7 +101,7 @@ directive set -CLUSTER_RTL_SYN false
 directive set -CLUSTER_FAST_MODE false
 directive set -CLUSTER_TYPE combinational
 directive set -COMPGRADE fast
-directive set -DESIGN_HIERARCHY simplecachedcore
+directive set -DESIGN_HIERARCHY doStep
 go analyze
 solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/memories -append
 solution library add C28SOI_SC_12_CORE_LL_ccs -file {{$MGC_HOME/pkgs/siflibs/designcompiler/CORE65LPHVT_ccs.lib}} -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {{28nm FDSOI}}
@@ -111,22 +112,22 @@ solution library add ST_singleport_{sets}x{ctrlwidth}
 go libraries
 directive set -CLOCKS {{clk {{-CLOCK_PERIOD {period:.2f} -CLOCK_EDGE rising -CLOCK_HIGH_TIME {halfperiod:.2f} -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {{}} -ENABLE_ACTIVE high}}}}
 go assembly
-directive set /simplecachedcore/core/main -PIPELINE_INIT_INTERVAL 1
-directive set /simplecachedcore/core/reg:rsc -MAP_TO_MODULE {{[Register]}}
-directive set /simplecachedcore/core -CLOCK_OVERHEAD 0.0
-directive set /simplecachedcore/core/cachedata:rsc -INTERLEAVE 4
-directive set /simplecachedcore/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-directive set /simplecachedcore/core/ctrl.tag:rsc -PACKING_MODE sidebyside
-directive set /simplecachedcore/core/ctrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-directive set /simplecachedcore/core/ctrl.tag -WORD_WIDTH {tagbits} 
-directive set /simplecachedcore/core/ctrl.dirty -RESOURCE ctrl.tag:rsc
-directive set /simplecachedcore/core/ctrl.dirty -WORD_WIDTH {associativity}
-directive set /simplecachedcore/core/ctrl.valid -RESOURCE ctrl.tag:rsc
-directive set /simplecachedcore/core/ctrl.valid -WORD_WIDTH {associativity}
-directive set /simplecachedcore/core/ctrl.policy -RESOURCE ctrl.tag:rsc
+directive set /doStep/core/REG:rsc -MAP_TO_MODULE {{[Register]}}
+directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
+directive set /doStep/core -CLOCK_OVERHEAD 0.0
+directive set /doStep/core/cachedata:rsc -INTERLEAVE 4
+directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
+directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
+directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
+directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
+directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
+directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
+directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
 
 go architect
-cycle add /simplecachedcore/core/core:rlp/main/loadset:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(ctrl.tag:rsc.@) -equal 0
+cycle add /doStep/core/core:rlp/main/loadset:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
 go schedule
 go extract
 project save {sets}x{ctrlwidth}cachedcore.ccs
@@ -181,11 +182,11 @@ policy = policy.upper()
 assert (associativity == 1 and policy == "NONE") or (associativity != 1 and policy != "NONE")
 assert policy in ["LRU", "RANDOM", "NONE", "FIFO"]
 
-defines = "-D{}={} "
-defines = defines.format("Size", cachesize) + defines.format("Associativity", associativity) + defines.format("Blocksize", int(blocksize/4)) + defines.format("Policy", policy)
-subprocess.check_call(["make", "DEFINES="+defines])
-with open("output.log", "w") as output:
-	subprocess.check_call(["./testbench.sim"], stdout=output)
+# ~ defines = "-D{}={} "
+# ~ defines = defines.format("Size", cachesize) + defines.format("Associativity", associativity) + defines.format("Blocksize", int(blocksize/4)) + defines.format("Policy", policy)
+# ~ subprocess.check_call(["make", "DEFINES="+defines])
+# ~ with open("output.log", "w") as output:
+	# ~ subprocess.check_call(["./testbench.sim"], stdout=output)
 
 
 sets = int(cachesize/(blocksize)/associativity)
