@@ -41,10 +41,9 @@ ElfFile::ElfFile(const char* pathToElfFile)
 
     //*************************************************************************************
     //First step is to read the 16 first bits to determine the type of the elf file to read.
-    unsigned int result;
     char eident[16];
-    result = fread(eident, sizeof(char), 16, elfFile);
-    result = fseek(elfFile, 0, SEEK_SET);
+    fread(eident, sizeof(char), 16, elfFile);
+    fseek(elfFile, 0, SEEK_SET);
 
     if (eident[EI_CLASS] == ELFCLASS32)
         this->is32Bits = 1;
@@ -63,7 +62,7 @@ ElfFile::ElfFile(const char* pathToElfFile)
 
     if (this->is32Bits)
     {
-        result = fread(&this->fileHeader32, sizeof(this->fileHeader32), 1, elfFile);
+        fread(&this->fileHeader32, sizeof(this->fileHeader32), 1, elfFile);
 
         if (this->fileHeader32.e_ident[0] == 0x7f)
             needToFixEndianness = 0;
@@ -72,7 +71,7 @@ ElfFile::ElfFile(const char* pathToElfFile)
     }
     else
     {
-        result = fread(&this->fileHeader64, sizeof(this->fileHeader64), 1, elfFile);
+        fread(&this->fileHeader64, sizeof(this->fileHeader64), 1, elfFile);
 
         if (this->fileHeader64.e_ident[0] == 0x7f)
             needToFixEndianness = 0;
@@ -300,10 +299,8 @@ bool ElfSection::isRelaSection()
 unsigned char* ElfSection::getSectionCode()
 {
     unsigned char* sectionContent = (unsigned char*) malloc(this->size);
-    unsigned int result;
-    result = fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
-    result = fread(sectionContent, 1, this->size, this->containingElfFile->elfFile);
-
+    fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
+    fread(sectionContent, 1, this->size, this->containingElfFile->elfFile);
     return sectionContent;
 }
 
@@ -311,8 +308,6 @@ unsigned char* ElfSection::getSectionCode()
 std::vector<ElfRelocation*>* ElfSection::getRelocations()
 {
     vector<ElfRelocation*> *result = new vector<ElfRelocation*>();
-
-    unsigned int readResult;
 
     //On non REL or RELA section, we return an empty vector
     if (!(this->isRelSection() || this->isRelaSection()))
@@ -323,16 +318,16 @@ std::vector<ElfRelocation*>* ElfSection::getRelocations()
     if (this->isRelSection())
     {
         Elf32_Rel* sectionContent = (Elf32_Rel*) malloc(this->size);
-        readResult = fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
-        readResult = fread(sectionContent, sizeof(Elf32_Rel), this->size/sizeof(Elf32_Rel), this->containingElfFile->elfFile);
+        fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
+        fread(sectionContent, sizeof(Elf32_Rel), this->size/sizeof(Elf32_Rel), this->containingElfFile->elfFile);
         for (unsigned int relCounter = 0; relCounter<this->size/sizeof(Elf32_Rel); relCounter++)
             result->push_back(new ElfRelocation(sectionContent[relCounter]));
     }
     else
     {
         Elf32_Rela* sectionContent = (Elf32_Rela*) malloc(this->size);
-        readResult = fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
-        readResult = fread(sectionContent, sizeof(Elf32_Rela), this->size/sizeof(Elf32_Rela), this->containingElfFile->elfFile);
+        fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
+        fread(sectionContent, sizeof(Elf32_Rela), this->size/sizeof(Elf32_Rela), this->containingElfFile->elfFile);
         for (unsigned int relCounter = 0; relCounter<this->size/sizeof(Elf32_Rela); relCounter++)
             result->push_back(new ElfRelocation(sectionContent[relCounter]));
     }
@@ -343,9 +338,8 @@ std::vector<ElfRelocation*>* ElfSection::getRelocations()
 
 void ElfSection::writeSectionCode(unsigned char* newContent)
 {
-    unsigned int readResult;
-    readResult = fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
-    readResult = fwrite(newContent, 1, this->size, this->containingElfFile->elfFile);
+    fseek(this->containingElfFile->elfFile, this->offset, SEEK_SET);
+    fwrite(newContent, 1, this->size, this->containingElfFile->elfFile);
 }
 
 void ElfSection::writeSectionCode(FILE* file, unsigned char* newContent)

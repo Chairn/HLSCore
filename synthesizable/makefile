@@ -5,14 +5,17 @@ LINC=./include
 INC_PARAMS=$(foreach d, $(INC), -I$d)
 VARS_CAT=-D__DEBUG__=1 -D__CATAPULT__=1
 VARS_VIV=-D__DEBUG__=1 -D__VIVADO__=1
-FILES=core.cpp elfFile.cpp reformeddm_sim.cpp syscall.cpp
+FILES=cache.cpp core.cpp elfFile.cpp reformeddm_sim.cpp syscall.cpp
 S=./src
 S_FILES=$(foreach f, $(FILES), $(S)/$f)
-HEADER=cache.h core.h debug.h elf.h elfFile.h portability.h riscvISA.h syscall.h DataMemory.h
+HEADER=cache.h core.h elf.h elfFile.h portability.h riscvISA.h syscall.h DataMemory.h
 I_HEADER=$(foreach f, $(HEADER), $(INC)/$f)
 
 catapult.sim: $(S_FILES) $(I_HEADER)
 	g++ -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT)
+
+debug: $(S_FILES) $(I_HEADER)
+	g++ -g -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT)
 
 vivado.sim: $(S_FILES) $(I_HEADER) 
 	g++ -o vivado.sim $(INC_PARAMS) $(S_FILES) $(VARS_VIV)

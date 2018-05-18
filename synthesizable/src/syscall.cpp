@@ -10,82 +10,82 @@
 #include <map>
 #include "portability.h"
 
-std::map<CORE_INT(16), FILE*> fileMap;
+std::map<ac_int<16, true>, FILE*> fileMap;
 FILE **inStreams, **outStreams;
 int nbInStreams, nbOutStreams;
 
-void stb(CORE_UINT(32) addr, CORE_INT(8) value)
+void stb(ac_int<32, false> addr, ac_int<8, true> value)
 {
 }
 
-void sth(CORE_UINT(32) addr, CORE_INT(16) value)
+void sth(ac_int<32, false> addr, ac_int<16, true> value)
 {
 }
 
-void stw(CORE_UINT(32) addr, CORE_INT(32) value)
+void stw(ac_int<32, false> addr, ac_int<32, true> value)
 {
-    stb(addr+3, value.SLC(8,24));
-    stb(addr+2, value.SLC(8,16));
-    stb(addr+1, value.SLC(8,8));
-    stb(addr+0, value.SLC(8,0));
+    stb(addr+3, value.slc<8>(24));
+    stb(addr+2, value.slc<8>(16));
+    stb(addr+1, value.slc<8>(8));
+    stb(addr+0, value.slc<8>(0));
 }
 
-void _std(CORE_UINT(32) addr, CORE_INT(32) value)
+void _std(ac_int<32, false> addr, ac_int<32, true> value)
 {
-    stb(addr+7, value.SLC(8,56));
-    stb(addr+6, value.SLC(8,48));
-    stb(addr+5, value.SLC(8,40));
-    stb(addr+4, value.SLC(8,32));
-    stb(addr+3, value.SLC(8,24));
-    stb(addr+2, value.SLC(8,16));
-    stb(addr+1, value.SLC(8,8));
-    stb(addr+0, value.SLC(8,0));
+    stb(addr+7, value.slc<8>(56));
+    stb(addr+6, value.slc<8>(48));
+    stb(addr+5, value.slc<8>(40));
+    stb(addr+4, value.slc<8>(32));
+    stb(addr+3, value.slc<8>(24));
+    stb(addr+2, value.slc<8>(16));
+    stb(addr+1, value.slc<8>(8));
+    stb(addr+0, value.slc<8>(0));
 }
 
-CORE_INT(8) ldb(CORE_UINT(32) addr)
+ac_int<8, true> ldb(ac_int<32, false> addr)
 {
-    CORE_INT(8) result = 0;
+    ac_int<8, true> result = 0;
     return result;
 }
 
-CORE_INT(16) ldh(CORE_UINT(32) addr)
+ac_int<16, true> ldh(ac_int<32, false> addr)
 {
-    CORE_INT(16) result = 0;
-    result.SET_SLC(8, ldb(addr+1));
-    result.SET_SLC(0, ldb(addr));
+    ac_int<16, true> result = 0;
+    result.set_slc(8, ldb(addr+1));
+    result.set_slc(0, ldb(addr));
     return result;
 }
 
-CORE_INT(32) ldw(CORE_UINT(32) addr)
+ac_int<32, true> ldw(ac_int<32, false> addr)
 {
-    CORE_INT(32) result = 0;
-    result.SET_SLC(24, ldb(addr+3));
-    result.SET_SLC(16, ldb(addr+2));
-    result.SET_SLC(8, ldb(addr+1));
-    result.SET_SLC(0, ldb(addr));
+    ac_int<32, true> result = 0;
+    result.set_slc(24, ldb(addr+3));
+    result.set_slc(16, ldb(addr+2));
+    result.set_slc(8, ldb(addr+1));
+    result.set_slc(0, ldb(addr));
     return result;
 }
 
-CORE_INT(32) ldd(CORE_UINT(32) addr)
+ac_int<32, true> ldd(ac_int<32, false> addr)
 {
-    CORE_INT(32) result = 0;
-    result.SET_SLC(56, ldb(addr+7));
-    result.SET_SLC(48, ldb(addr+6));
-    result.SET_SLC(40, ldb(addr+5));
-    result.SET_SLC(32, ldb(addr+4));
-    result.SET_SLC(24, ldb(addr+3));
-    result.SET_SLC(16, ldb(addr+2));
-    result.SET_SLC(8, ldb(addr+1));
-    result.SET_SLC(0, ldb(addr));
+    ac_int<32, true> result = 0;
+    result.set_slc(56, ldb(addr+7));
+    result.set_slc(48, ldb(addr+6));
+    result.set_slc(40, ldb(addr+5));
+    result.set_slc(32, ldb(addr+4));
+    result.set_slc(24, ldb(addr+3));
+    result.set_slc(16, ldb(addr+2));
+    result.set_slc(8, ldb(addr+1));
+    result.set_slc(0, ldb(addr));
     return result;
 }
 
-CORE_UINT(32) doRead(CORE_UINT(32) file, CORE_UINT(32) bufferAddr, CORE_UINT(32) size)
+ac_int<32, false> doRead(ac_int<32, false> file, ac_int<32, false> bufferAddr, ac_int<32, false> size)
 {
     //printf("Doign read on file %x\n", file);
-    int localSize = size.SLC(32,0);
+    int localSize = size.slc<32>(0);
     char* localBuffer = (char*) malloc(localSize*sizeof(char));
-    CORE_UINT(32) result;
+    ac_int<32, false> result;
     if (file == 0)
     {
         if (nbInStreams == 1)
@@ -95,7 +95,7 @@ CORE_UINT(32) doRead(CORE_UINT(32) file, CORE_UINT(32) bufferAddr, CORE_UINT(32)
     }
     else
     {
-        FILE* localFile = fileMap[file.SLC(16,0)];
+        FILE* localFile = fileMap[file.slc<16>(0)];
         result = fread(localBuffer, 1, size, localFile);
         if (localFile == 0)
             return -1;
@@ -107,15 +107,15 @@ CORE_UINT(32) doRead(CORE_UINT(32) file, CORE_UINT(32) bufferAddr, CORE_UINT(32)
     return result;
 }
 
-CORE_UINT(32) doWrite(CORE_UINT(32) file, CORE_UINT(32) bufferAddr, CORE_UINT(32) size)
+ac_int<32, false> doWrite(ac_int<32, false> file, ac_int<32, false> bufferAddr, ac_int<32, false> size)
 {
-    int localSize = size.SLC(32,0);
+    int localSize = size.slc<32>(0);
     char* localBuffer = (char*) malloc(localSize*sizeof(char));
     for (int i=0; i<size; i++)
         localBuffer[i] = ldb(bufferAddr + i);
     if (file < 5)
     {
-        CORE_UINT(32) result = 0;
+        ac_int<32, false> result = 0;
         int streamNB = (int) file-nbInStreams;
         if (nbOutStreams + nbInStreams > file)
             result = fwrite(localBuffer, 1, size, outStreams[streamNB]);
@@ -125,15 +125,15 @@ CORE_UINT(32) doWrite(CORE_UINT(32) file, CORE_UINT(32) bufferAddr, CORE_UINT(32
     }
     else
     {
-        FILE* localFile = fileMap[file.SLC(16,0)];
+        FILE* localFile = fileMap[file.slc<16>(0)];
         if (localFile == 0)
             return -1;
-        CORE_UINT(32) result = fwrite(localBuffer, 1, size, localFile);
+        ac_int<32, false> result = fwrite(localBuffer, 1, size, localFile);
         return result;
     }
 }
 
-CORE_UINT(32) doOpen(CORE_UINT(32) path, CORE_UINT(32) flags, CORE_UINT(32) mode)
+ac_int<32, false> doOpen(ac_int<32, false> path, ac_int<32, false> flags, ac_int<32, false> mode)
 {
     int oneStringElement = ldb(path);
     int index = 0;
@@ -146,7 +146,7 @@ CORE_UINT(32) doOpen(CORE_UINT(32) path, CORE_UINT(32) flags, CORE_UINT(32) mode
     char* localPath = (char*) malloc(pathSize*sizeof(char));
     for (int i=0; i<pathSize; i++)
         localPath[i] = ldb(path + i);
-    char* localMode;
+    const char* localMode;
     if (flags==0)
         localMode = "r";
     else if (flags == 577)
@@ -162,27 +162,27 @@ CORE_UINT(32) doOpen(CORE_UINT(32) path, CORE_UINT(32) flags, CORE_UINT(32) mode
     }
     FILE* test = fopen(localPath, localMode);
     int result; //= (int) test;
-    CORE_INT(32) result_ac = result;
+    ac_int<32, true> result_ac = result;
     //For some reasons, newlib only store last 16 bits of this pointer, we will then compute a hash and return that.
     //The real pointer is stored here in a hashmap
-    CORE_INT(32) returnedResult = 0;
-    returnedResult.SET_SLC(0, result_ac.SLC(15,0) ^ result_ac.SLC(15,16));
+    ac_int<32, true> returnedResult = 0;
+    returnedResult.set_slc(0, result_ac.slc<15>(0) ^ result_ac.slc<15>(16));
     returnedResult[15] = 0;
-    fileMap[returnedResult.SLC(16,0)] = test;
+    fileMap[returnedResult.slc<16>(0)] = test;
     return returnedResult;
 }
 
-CORE_UINT(32) doOpenat(CORE_UINT(32) dir, CORE_UINT(32) path, CORE_UINT(32) flags, CORE_UINT(32) mode)
+ac_int<32, false> doOpenat(ac_int<32, false> dir, ac_int<32, false> path, ac_int<32, false> flags, ac_int<32, false> mode)
 {
     fprintf(stderr, "Syscall openat not implemented yet...\n");
     exit(-1);
 }
 
-CORE_UINT(32) doClose(CORE_UINT(32) file)
+ac_int<32, false> doClose(ac_int<32, false> file)
 {
     if (file > 2 )
     {
-        FILE* localFile = fileMap[file.SLC(16,0)];
+        FILE* localFile = fileMap[file.slc<16>(0)];
         int result = fclose(localFile);
         return result;
     }
@@ -190,11 +190,11 @@ CORE_UINT(32) doClose(CORE_UINT(32) file)
         return 0;
 }
 
-CORE_INT(32) doLseek(CORE_UINT(32) file, CORE_UINT(32) ptr, CORE_UINT(32) dir)
+ac_int<32, true> doLseek(ac_int<32, false> file, ac_int<32, false> ptr, ac_int<32, false> dir)
 {
     if (file>2)
     {
-        FILE* localFile = fileMap[file.SLC(16,0)];
+        FILE* localFile = fileMap[file.slc<16>(0)];
         if (localFile == 0)
             return -1;
         int result = fseek(localFile, ptr, dir);
@@ -204,7 +204,7 @@ CORE_INT(32) doLseek(CORE_UINT(32) file, CORE_UINT(32) ptr, CORE_UINT(32) dir)
         return 0;
 }
 
-CORE_UINT(32) doStat(CORE_UINT(32) filename, CORE_UINT(32) ptr)
+ac_int<32, false> doStat(ac_int<32, false> filename, ac_int<32, false> ptr)
 {
     int oneStringElement = ldb(filename);
     int index = 0;
@@ -225,12 +225,12 @@ CORE_UINT(32) doStat(CORE_UINT(32) filename, CORE_UINT(32) ptr)
     return result;
 }
 
-CORE_UINT(32) doSbrk(CORE_UINT(32) value)
+ac_int<32, false> doSbrk(ac_int<32, false> value)
 {
     return 0;
 }
 
-CORE_UINT(32) doGettimeofday(CORE_UINT(32) timeValPtr)
+ac_int<32, false> doGettimeofday(ac_int<32, false> timeValPtr)
 {
     timeval* oneTimeVal;
     struct timezone* oneTimeZone;
@@ -238,7 +238,7 @@ CORE_UINT(32) doGettimeofday(CORE_UINT(32) timeValPtr)
     return result;
 }
 
-CORE_UINT(32) doUnlink(CORE_UINT(32) path)
+ac_int<32, false> doUnlink(ac_int<32, false> path)
 {
     int oneStringElement = ldb(path);
     int index = 0;
@@ -255,10 +255,10 @@ CORE_UINT(32) doUnlink(CORE_UINT(32) path)
     return result;
 }
 
-CORE_UINT(32) solveSysCall(CORE_UINT(32) syscallId, CORE_UINT(32) arg1, CORE_UINT(32) arg2,
-                           CORE_UINT(32) arg3, CORE_UINT(32) arg4, CORE_UINT(2) *sys_status)
+ac_int<32, false> solveSysCall(ac_int<32, false> syscallId, ac_int<32, false> arg1, ac_int<32, false> arg2,
+                           ac_int<32, false> arg3, ac_int<32, false> arg4, ac_int<2, false> *sys_status)
 {
-    CORE_UINT(32) result = 0;
+    ac_int<32, false> result = 0;
     switch (syscallId)
     {
     case SYS_exit:
