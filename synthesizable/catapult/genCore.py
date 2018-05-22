@@ -127,7 +127,7 @@ directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
 directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
 
 go architect
-cycle add /doStep/core/core:rlp/main/loadset:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
+//cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
 go schedule
 go extract
 project save {sets}x{ctrlwidth}cachedcore.ccs
@@ -139,123 +139,75 @@ def is_powerof2(num):
 def nextpowerof2(num):
 	assert(num > 0)
 	return 2**(num-1).bit_length()
+	
+def doCore(cachesize, associativity, blocksize):
+	sets = int(cachesize/(blocksize)/associativity)
+	tagbits = int(32 - log2(blocksize/4) - log2(sets) - 2)
+	bits = int(associativity*(tagbits+1+1)+associativity*(associativity-1)/2)
 
-parser = argparse.ArgumentParser()
-parser.add_argument("-s", "--shell", help="Launch catapult in shell", action="store_true")
-parser.add_argument("-c", "--cache-size", help="Cache size in bytes", type=int)
-parser.add_argument("-a", "--associativity", help="Cache associativity", type=int)
-parser.add_argument("-b", "--blocksize", help="Cache blocksize in bytes", type=int)
-parser.add_argument("-p", "--policy", help="Replacement policy")
+	print("Generating cached core with cachesize ", cachesize, " bytes and associativity ", associativity, " and block size of ", blocksize, " bytes.")
+	print("Tagbits {}\nBitwidth of control {}({})\nSets {}".format(tagbits, bits, nextpowerof2(bits), sets))
+	bitwidth = nextpowerof2(bits)
+	sets = nextpowerof2(sets)
+	area = int((1.4624*sets*bitwidth)/8+4915)
+	tagbits = 4*tagbits
 
-args = parser.parse_args()
-try:
-	cachesize = args.cache_size
-	assert is_powerof2(cachesize), "cachesize is not a power of 2"
-except TypeError:
-	cachesize = 1024
-	print("Setting default cachesize to {}".format(cachesize))
+	#control memory
+	memsize = sets
+	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(sets, bitwidth)
+	if not os.path.isfile(memorypath):
+		mem = genMem.format(**globals())
+		print("Generating control memory {}x{} with area {}".format(sets, bitwidth, area))
+		# ~ print(mem)
+		# ~ sys.exit()
+		with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
+			f.write(mem)
+		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
 
-try:
-	associativity = args.associativity
-	assert is_powerof2(associativity), "associativity is not a power of 2"
-except TypeError:
-	associativity = 4
-	print("Setting default associativity to {}".format(associativity))
+	#data memory
+	bitwidth = 32
+	memsize = int(8*cachesize/bitwidth)
+	area = int(1.4624*memsize*(bitwidth/8)+4915)
+	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
+	if not os.path.isfile(memorypath):
+		mem = genMem.format(**globals())
+		print("Generating data memory {}x{} with area {}".format(memsize, bitwidth, area))
+		# ~ print(mem)
+		# ~ sys.exit()
+		with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
+			f.write(mem)
+		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
 
-try:
-	blocksize = int(args.blocksize/1)
-	assert is_powerof2(blocksize), "blocksize is not a power of 2"
-except TypeError:
-	blocksize = 32
-	print("Setting default blocksize to {}".format(blocksize))
+	#data memory
+	bitwidth = 32
+	memsize = int(8*cachesize/bitwidth/associativity)
+	area = int(1.4624*memsize*(bitwidth/8)+4915)
+	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
+	if not os.path.isfile(memorypath):
+		mem = genMem.format(**globals())
+		print("Generating interleaved data memory {}x{} with area {}".format(memsize, bitwidth, area))
+		# ~ print(mem)
+		# ~ sys.exit()
+		with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
+			f.write(mem)
+		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
 
-try:
-	policy = args.policy + ""
-except TypeError:
-	if associativity == 1:
-		policy = "NONE"
+	#core
+	datasize = int(8*cachesize/bitwidth)
+	interleaveddatasize = int(8*cachesize/bitwidth/associativity)
+	blocksize = int(blocksize/4)
+	datawidth = 32
+	ctrlwidth = nextpowerof2(bits)
+	period = 1.5
+	halfperiod = period/2
+	core = genCore.format(**locals())
+	with open("genCore.tcl", "w") as f:
+		f.write(core)
+
+	if args.shell:
+		subprocess.check_call(["./catapult.sh", "-shell -f genCore.tcl"])
 	else:
-		policy = "LRU"
-	print("Setting default policy to {}".format(policy))
-
-policy = policy.upper()
-assert (associativity == 1 and policy == "NONE") or (associativity != 1 and policy != "NONE")
-assert policy in ["LRU", "RANDOM", "NONE", "FIFO"]
-
-# ~ defines = "-D{}={} "
-# ~ defines = defines.format("Size", cachesize) + defines.format("Associativity", associativity) + defines.format("Blocksize", int(blocksize/4)) + defines.format("Policy", policy)
-# ~ subprocess.check_call(["make", "DEFINES="+defines])
-# ~ with open("output.log", "w") as output:
-	# ~ subprocess.check_call(["./testbench.sim"], stdout=output)
-
-
-sets = int(cachesize/(blocksize)/associativity)
-tagbits = int(32 - log2(blocksize/4) - log2(sets) - 2)
-bits = int(associativity*(tagbits+1+1)+associativity*(associativity-1)/2)
-
-print("Generating cached core with cachesize ", cachesize, " bytes and associativity ", associativity, " and block size of ", blocksize, " bytes.")
-print("Tagbits {}\nBitwidth of control {}({})\nSets {}".format(tagbits, bits, nextpowerof2(bits), sets))
-bitwidth = nextpowerof2(bits)
-sets = nextpowerof2(sets)
-area = int((1.4624*sets*bitwidth)/8+4915)
-tagbits = 4*tagbits
-
-#control memory
-memsize = sets
-memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(sets, bitwidth)
-if not os.path.isfile(memorypath):
-	mem = genMem.format(**globals())
-	print("Generating control memory {}x{} with area {}".format(sets, bitwidth, area))
-	# ~ print(mem)
-	# ~ sys.exit()
-	with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
-		f.write(mem)
-	subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
-
-#data memory
-bitwidth = 32
-memsize = int(8*cachesize/bitwidth)
-area = int(1.4624*memsize*(bitwidth/8)+4915)
-memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
-if not os.path.isfile(memorypath):
-	mem = genMem.format(**globals())
-	print("Generating data memory {}x{} with area {}".format(memsize, bitwidth, area))
-	# ~ print(mem)
-	# ~ sys.exit()
-	with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
-		f.write(mem)
-	subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
-
-#data memory
-bitwidth = 32
-memsize = int(8*cachesize/bitwidth/associativity)
-area = int(1.4624*memsize*(bitwidth/8)+4915)
-memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
-if not os.path.isfile(memorypath):
-	mem = genMem.format(**globals())
-	print("Generating interleaved data memory {}x{} with area {}".format(memsize, bitwidth, area))
-	# ~ print(mem)
-	# ~ sys.exit()
-	with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
-		f.write(mem)
-	subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
-
-#core
-datasize = int(8*cachesize/bitwidth)
-interleaveddatasize = int(8*cachesize/bitwidth/associativity)
-blocksize = int(blocksize/4)
-datawidth = 32
-ctrlwidth = nextpowerof2(bits)
-period = 1.5
-halfperiod = period/2
-core = genCore.format(**globals())
-with open("genCore.tcl", "w") as f:
-	f.write(core)
-
-if args.shell:
-	subprocess.check_call(["./catapult.sh", "-shell -f genCore.tcl"])
-else:
-	subprocess.check_call(["./catapult.sh", "-f genCore.tcl"])
+		subprocess.check_call(["./catapult.sh", "-f genCore.tcl"])
 
 #or add // pragma dofile( noerrors : true ) in file to continue even if errors
 #then new tcl file
@@ -264,5 +216,60 @@ else:
 # new iteration
 # with -shell, error in synthesis is detected(at least for schedule error)
 
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser()
+	parser.add_argument("-s", "--shell", help="Launch catapult in shell", action="store_true")
+	parser.add_argument("-c", "--cache-size", help="Cache size in bytes", type=int)
+	parser.add_argument("-a", "--associativity", help="Cache associativity", type=int)
+	parser.add_argument("-b", "--blocksize", help="Cache blocksize in bytes", type=int)
+	parser.add_argument("-p", "--policy", help="Replacement policy")
 
+	args = parser.parse_args()
+	try:
+		cachesize = args.cache_size
+		assert is_powerof2(cachesize), "cachesize is not a power of 2"
+	except TypeError:
+		cachesize = 1024
+		print("Setting default cachesize to {}".format(cachesize))
 
+	try:
+		associativity = args.associativity
+		assert is_powerof2(associativity), "associativity is not a power of 2"
+	except TypeError:
+		associativity = 4
+		print("Setting default associativity to {}".format(associativity))
+
+	try:
+		blocksize = int(args.blocksize/1)
+		assert is_powerof2(blocksize), "blocksize is not a power of 2"
+	except TypeError:
+		blocksize = 32
+		print("Setting default blocksize to {}".format(blocksize))
+
+	try:
+		policy = args.policy + ""
+	except TypeError:
+		if associativity == 1:
+			policy = "NONE"
+		else:
+			policy = "LRU"
+		print("Setting default policy to {}".format(policy))
+
+	policy = policy.upper()
+	assert (associativity == 1 and policy == "NONE") or (associativity != 1 and policy != "NONE")
+	assert policy in ["LRU", "RANDOM", "NONE", "FIFO"]
+
+	# ~ defines = "-D{}={} "
+	# ~ defines = defines.format("Size", cachesize) + defines.format("Associativity", associativity) + defines.format("Blocksize", int(blocksize/4)) + defines.format("Policy", policy)
+	# ~ subprocess.check_call(["make", "DEFINES="+defines])
+	# ~ with open("output.log", "w") as output:
+		# ~ subprocess.check_call(["./testbench.sim"], stdout=output)
+
+	doCore(cachesize, associativity, blocksize)
+	
+	# ~ for exploration :
+	# ~ go new
+	# ~ solution new
+	# ~ solution rename abc
+	# ~ solution file set {-Dsize...
+	

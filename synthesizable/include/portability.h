@@ -29,7 +29,7 @@
 
 #ifndef __SYNTHESIS__
 #include <cstdio>
-
+#include <stdint.h>
 #define debug(...)   printf(__VA_ARGS__)
 #define simul(...)   __VA_ARGS__
 #else

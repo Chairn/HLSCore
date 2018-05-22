@@ -542,8 +542,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     sign = 0;
                     break;
                 }
-#define docache
-#ifdef docache
+#ifndef nocache
                 address = memtoWB.result % 8192;
                 cacheenable = true;
                 writeenable = false;
@@ -567,7 +566,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     datasize = 0;
                     break;
                 }
-#ifdef docache
+#ifndef nocache
                 address = memtoWB.result % 8192;
                 cacheenable = true;
                 writeenable = true;
@@ -607,7 +606,7 @@ void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& earl
 
 void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], unsigned int dm[8192], bool& exit
 #ifndef __SYNTHESIS__
-    , int cycles
+    , uint64_t cycles
 #endif
 )
 {
@@ -621,6 +620,10 @@ void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], unsign
     (void)dirinit;
     static bool valinit = ac::init_array<AC_VAL_0>((bool*)cachectrl.valid, Sets*Associativity);
     (void)valinit;
+    simul(if(cycles == 1)
+        for(int i(0); i < Sets*Associativity; ++i)
+            assert(cachectrl.valid[i/Sets][i%Associativity] == 0);
+    )
 #if Policy == FIFO
     static bool polinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)cachectrl.policy, Sets);
     (void)polinit;
@@ -695,7 +698,6 @@ void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], unsign
           , cycles
       #endif
           );
-
 
     if(!cachelock)
     {

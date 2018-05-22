@@ -164,11 +164,10 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
            ac_int<32, false> address, ac_int<2, false> datasize, bool cacheenable, bool writeenable, int writevalue,    // from cpu
            int& read, bool& datavalid                                                       // to cpu
 #ifndef __SYNTHESIS__
-           , int cycles
+           , uint64_t cycles
 #endif
            )
 {
-    ac_int<32, false> bytead;
     switch(ctrl.state)
     {
     case Idle:
@@ -217,7 +216,7 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
                     );*/
 
                     ctrl.state = StoreData;
-                    debug("memory enable    W:%08x  @%04x   S:%d\n", writevalue, ((address % 8192) >> 2).to_int(), datasize.to_int());
+                    debug("memory enable    W:%08x  @%04x   S:%d    %5s %d  %d\n", writevalue, ((address % 8192) >> 2).to_int(), datasize.to_int(), " ", ctrl.currentset.to_int(), ctrl.currentway.to_int());
                 }
                 else
                 {                                                //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?
@@ -243,27 +242,30 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
                     );*/
 
                     ctrl.state = StoreControl;
-                    debug("memory enable    R:%08x  @%04x   S:%d    %s\n", read, ((address % 8192) >> 2).to_int(), datasize.to_int(), 1?"true":"false");
+                    debug("memory enable    R:%08x  @%04x   S:%d    %5s %d  %d\n", read, ((address % 8192) >> 2).to_int(), datasize.to_int(), 1?"true":"false", ctrl.currentset.to_int(), ctrl.currentway.to_int());
                 }
                 datavalid = true;
 
                 /*debug("@%04x    ", address.to_int());
                 debug("(@%04x)\n", address.to_int() >> 2);*/
-
-                update_policy(ctrl);
             }
             else    // not found or invalid
             {
                 select(ctrl);
-                //debug("data not found or invalid   ");
+                debug("data @%04x (%04x) not found or invalid   ", address.to_int(), address.to_int() >> 2);
                 if(ctrl.setctrl.dirty[ctrl.currentway] && ctrl.setctrl.valid[ctrl.currentway])
                 {
-                    ctrl.state = WriteBack;
+                    if(ctrl.currentset == 5 && ctrl.currentway == 2)
+                        debug("\n");
+                    ctrl.state = FirstWriteBack;
                     ctrl.i = 0;
-                    ctrl.workAddress = ctrl.setctrl.tag[ctrl.currentway];
-                    ctrl.valuetowrite = ctrl.setctrl.data[ctrl.currentway];
+                    ctrl.workAddress = 0;//(ctrl.setctrl.tag[ctrl.currentway] << tagshift) | (ctrl.currentset << setshift);
+                    setTag(ctrl.workAddress, ctrl.setctrl.tag[ctrl.currentway]);
+                    setSet(ctrl.workAddress, ctrl.currentset);
+                    //ctrl.valuetowrite = ctrl.setctrl.data[ctrl.currentway];
                     datavalid = false;
-                    //debug("starting writeback \n");
+                    debug("starting writeback from %d %d from %04x to %04x\n", ctrl.currentset.to_int(), ctrl.currentway.to_int(), ctrl.workAddress.to_int() >> 2, (ctrl.workAddress.to_int() >> 2) + Blocksize-1);
+                    //debug("%08x \n", ctrl.valuetowrite.to_int());
                 }
                 else
                 {
@@ -275,7 +277,8 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
                     ac_int<32, false> wordad;
                     wordad.set_slc(0, address.slc<30>(2));
                     wordad.set_slc(30, (ac_int<2, false>)0);
-                    //debug("starting fetching for %s from %04x to %04x (%04x)\n", writeenable?"W":"R", wordad.to_int() << 2, (int)(wordad.to_int()+Blocksize) << 2, address.to_int());
+                    debug("starting fetching to %d %d for %s from %04x to %04x (%04x to %04x)\n", ctrl.currentset.to_int(), ctrl.currentway.to_int(), writeenable?"W":"R", (wordad.to_int() << 2)&(tagmask+setmask),
+                          (((int)(wordad.to_int()+Blocksize) << 2)&(tagmask+setmask))-1, ((address % 8192) >> 2).to_int() & (~(blockmask >> 2)), ((((address % 8192) >> 2).to_int() + Blocksize) & (~(blockmask >> 2)))-1 );
                     ctrl.valuetowrite = dmem[wordad];
                     // critical word first
                     if(writeenable)
@@ -283,19 +286,23 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
                         format(address, datasize, ctrl.valuetowrite, writevalue);
                         ctrl.setctrl.dirty[ctrl.currentway] = true;
                         //debug("%5d  Storing data %08x @%04x\n", cycles, ctrl.valuetowrite.to_int(), wordad.to_int());
-                        debug("memory enable    W:%08x  @%04x   S:%d\n", writevalue, ((address % 8192) >> 2).to_int(), datasize.to_int());
+                        debug("memory enable    W:%08x  @%04x   S:%d    %5s %d  %d\n", writevalue, ((address % 8192) >> 2).to_int(), datasize.to_int(), " ", ctrl.currentset.to_int(), ctrl.currentway.to_int());
                     }
                     else
                     {
                         ac_int<32, false> r = ctrl.valuetowrite;
+                        ctrl.setctrl.dirty[ctrl.currentway] = false;
                         format(address, datasize, r);
                         read = r;
-                        debug("memory enable    R:%08x  @%04x   S:%d    %s\n", read, ((address % 8192) >> 2).to_int(), datasize.to_int(), 1?"true":"false");
+                        debug("memory enable    R:%08x  @%04x   S:%d    %5s %d  %d\n", read, ((address % 8192) >> 2).to_int(), datasize.to_int(), 1?"true":"false", ctrl.currentset.to_int(), ctrl.currentway.to_int());
                     }
 
                     datavalid = true;
                 }
             }
+
+            if(ctrl.state != WriteBack && ctrl.state != FirstWriteBack)
+                update_policy(ctrl);
         }
         else
             datavalid = false;
@@ -329,8 +336,28 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
 
         ctrl.state = Idle;
         break;
+    case FirstWriteBack:
+    {   //bracket for scope and allow compilation
+        ctrl.i == 0;
+        ac_int<32, false> bytead = 0;
+        setTag(bytead, ctrl.setctrl.tag[ctrl.currentway]);
+        setSet(bytead, ctrl.currentset);
+        setOffset(bytead, ctrl.i);
+
+        simul(
+        for(unsigned int i(0); i < sizeof(int); ++i)
+        {
+            //debug("writing back %02x to %04x (%04x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, bytead.to_int() + i, (bytead.to_int()+i) >> 2);
+        });
+
+        ctrl.valuetowrite = data[ctrl.currentset][ctrl.i][ctrl.currentway];
+        ctrl.state = WriteBack;
+        datavalid = false;
+        break;
+    }
     case WriteBack:
-        //ac_int<32, false> bytead;
+    {   //bracket for scope and allow compilation
+        ac_int<32, false> bytead = 0;
         setTag(bytead, ctrl.setctrl.tag[ctrl.currentway]);
         setSet(bytead, ctrl.currentset);
         setOffset(bytead, ctrl.i);
@@ -339,7 +366,7 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
         simul(
         for(unsigned int i(0); i < sizeof(int); ++i)
         {
-            //debug("writing back %02x to %04x (%04x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, (bytead.to_int() << 2) + i, bytead.to_int());
+            //debug("writing back %02x to %04x (%04x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, bytead.to_int() + i, (bytead.to_int()+i) >> 2);
         });
 
         if(++ctrl.i)
@@ -353,6 +380,7 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
 
         datavalid = false;
         break;
+    }
     case Fetch:
         data[ctrl.currentset][ctrl.i][ctrl.currentway] = ctrl.valuetowrite;
         datavalid = false;

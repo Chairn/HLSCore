@@ -2,6 +2,7 @@
 #include "elfFile.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -12,6 +13,7 @@
 #include "cache.h"
 #include "core.h"
 #include "portability.h"
+#include <bitset>
 //#include "sds_lib.h"
 
 #ifdef __VIVADO__
@@ -123,9 +125,15 @@ public:
 };
 
 
-int main()
+int main(int argc, char** argv)
 {
-    const char* binaryFile = "benchmarks/build/matmul4_4.out";
+    const char* binaryFile;
+    if(argc > 1)
+        binaryFile = argv[1];
+    else
+        binaryFile = "benchmarks/build/qsort_100.out";
+    fprintf(stderr, "Simulating %s\n", binaryFile);
+    std::cout << "Simulating " << binaryFile << std::endl;
     ElfFile elfFile(binaryFile);
     Simulator sim;
     int counter = 0;
@@ -141,6 +149,7 @@ int main()
                 counter++;
                 sim.setDataMemory(oneSection->address + byteNumber, sectionContent[byteNumber]);
             }
+            debug("filling %04x to %04x\n", oneSection->address, oneSection->address + oneSection->size);
         }
 
         if (!oneSection->getName().compare(".text"))
@@ -176,13 +185,14 @@ int main()
         dm[i] = sim.getDataMemory()[i];
     }
 
-    int cycles = 1;
+    uint64_t cycles = 1;
     bool exit = false;
     while(!exit)
     {
         doStep(sim.getPC(), sim.getInstructionMemory(), dm, exit, cycles++);
-        if(cycles > 1e4)
-            break;
+        if(cycles % (uint64_t)1e7 == 0)
+            fprintf(stderr, "%lld\n", cycles);
+            //break;//return 1;
     }
     debug("Successfully executed all instructions in %d cycles\n", cycles);
 
@@ -192,5 +202,6 @@ int main()
         if(dm[i])
             printf("%4x : %08x (%d)\n", i, dm[i], dm[i]);
     }
+
     return 0;
 }

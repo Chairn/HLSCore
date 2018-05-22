@@ -76,7 +76,7 @@ enum {
 
 struct SetControl
 {
-    int data[Associativity];
+    unsigned int data[Associativity];
     ac_int<32-tagshift, false> tag[Associativity];
     bool dirty[Associativity];
     bool valid[Associativity];
@@ -86,7 +86,7 @@ struct SetControl
   #if Policy == FIFO
     ac_int<ac::log2_ceil<Associativity>::val, false> policy;
   #elif Policy == LRU
-    ac_int<Associativity * (Associativity+1) / 2, false> policy;
+    ac_int<Associativity * (Associativity-1) / 2, false> policy;
   #elif Policy == RANDOM
     //ac_int<ac::log2_ceil<Associativity>::val, false> policy;
   #else   // None

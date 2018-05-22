@@ -62,16 +62,17 @@ enum {
 
 enum {
     Idle         = 0,
-    StoreControl = 1,
-    StoreData    = 2,
-    WriteBack    = 3,
-    Fetch        = 4,
-    States       = 5
+    StoreControl    ,
+    StoreData       ,
+    FirstWriteBack  ,
+    WriteBack       ,
+    Fetch           ,
+    States
 };
 
 struct SetControl
 {
-    int data[Associativity];
+    unsigned int data[Associativity];
     ac_int<32-tagshift, false> tag[Associativity];
     bool dirty[Associativity];
     bool valid[Associativity];
@@ -81,7 +82,7 @@ struct SetControl
   #if Policy == FIFO
     ac_int<ac::log2_ceil<Associativity>::val, false> policy;
   #elif Policy == LRU
-    ac_int<Associativity * (Associativity+1) / 2, false> policy;
+    ac_int<Associativity * (Associativity-1) / 2, false> policy;
   #elif Policy == RANDOM
     //ac_int<ac::log2_ceil<Associativity>::val, false> policy;
   #else   // None
@@ -123,7 +124,7 @@ void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blo
            ac_int<32, false> address, ac_int<2, false> datasize, bool cacheenable, bool writeenable, int writevalue,    // from cpu
            int& read, bool& datavalid                                                       // to cpu
 #ifndef __SYNTHESIS__
-           , int cycles
+           , uint64_t cycles
 #endif
            );
 

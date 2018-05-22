@@ -2,3 +2,5 @@ Catapult/
 Catapult_*/
 Catapult.ccs
 catapult.log
+*core*
+*.tcl
