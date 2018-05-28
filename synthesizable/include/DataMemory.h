@@ -16,7 +16,7 @@ class DataMemory
 
 public:
 
-    ac_int<8, true> memory[8192][4];
+    ac_int<8, true> memory[N][4];
 
     void set(ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
     {
@@ -24,7 +24,7 @@ public:
         // For store half word, op = 1
         // For store word, op = 3
 
-        ac_int<13, false> wrapped_address = address % 8192;
+        ac_int<13, false> wrapped_address = address % N;
         ac_int<8, true> byte0 = value.slc<8>(0);
         ac_int<8, true> byte1 = value.slc<8>(8);
         ac_int<8, true> byte2 = value.slc<8>(16);
@@ -48,7 +48,7 @@ public:
         // For load byte, op = 0
         // For load half word, op = 1
         // For load word, op = 3
-        ac_int<13, false> wrapped_address = address % 8192;
+        ac_int<13, false> wrapped_address = address % N;
         ac_int<2, false> offset = wrapped_address & 0x3;
         ac_int<13, false> location = wrapped_address >> 2;
         ac_int<32, true> result;

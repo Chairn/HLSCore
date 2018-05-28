@@ -39,7 +39,9 @@
 #define assert(a)
 #endif
 
-#define DRAM_WIDTH 32
-#define DRAM_SIZE 100000000
+#define DRAM_WIDTH  32
+#define DRAM_SIZE   (1 << 24)
+
+#define N           DRAM_SIZE
 
 #endif /* For PORTABILITY_H_ */

@@ -53,7 +53,7 @@ struct MemtoWB
 };
 
 
-void doStep(ac_int<32, false> pc, ac_int<32, true> ins_memory[8192], unsigned int dm[8192], bool &exit
+void doStep(ac_int<32, false> pc, unsigned int ins_memory[N], unsigned int dm[N], bool &exit
 #ifndef __SYNTHESIS__
 , uint64_t cycles
 #endif

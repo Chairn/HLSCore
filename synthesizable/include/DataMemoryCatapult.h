@@ -8,18 +8,18 @@ class DataMemory
 
 public:
 
-    ac_int<32, true> memory[8192];
+    ac_int<32, true> memory[N];
 
     void set(ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
     {
-        ac_int<13, false> wrapped_address = address % 8192;
+        ac_int<13, false> wrapped_address = address % N;
         memory[wrapped_address >> 2] = value;
     }
 
     ac_int<32, true> get(ac_int<32, false> address, ac_int<2, false> op,
                      ac_int<1, false> sign)
     {
-        ac_int<13, false> wrapped_address = address % 8192;
+        ac_int<13, false> wrapped_address = address % N;
         ac_int<2, false> offset = wrapped_address & 0x3;
         ac_int<13, false> location = wrapped_address >> 2;
         ac_int<32, true> result;

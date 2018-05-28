@@ -62,10 +62,13 @@ solution options set /Input/CompilerFlags {{-D __CATAPULT__=1}}
 solution options set /Input/SearchPath ../include
 flow package require /SCVerify
 solution file add ../src/core.cpp -type C++
+solution file add ../src/reformeddm_sim.cpp -type C++
 solution file add ../src/cache.cpp -type C++
+solution file add ../src/syscall.cpp -type C++
+solution file add ../src/elfFile.cpp -type C++
 go new
 solution file set ../src/core.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
-solution file set ../src/cache.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
+//solution file set ../src/cache.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
 directive set -DESIGN_GOAL area
 directive set -OLD_SCHED false
 directive set -SPECULATE true
@@ -105,32 +108,41 @@ directive set -DESIGN_HIERARCHY doStep
 go analyze
 solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/memories -append
 solution library add C28SOI_SC_12_CORE_LL_ccs -file {{$MGC_HOME/pkgs/siflibs/designcompiler/CORE65LPHVT_ccs.lib}} -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {{28nm FDSOI}}
-solution library add ST_singleport_8192x32
+solution library add ST_singleport_16777216x32
 solution library add ST_singleport_{datasize}x{datawidth}
 solution library add ST_singleport_{interleaveddatasize}x{datawidth}
 solution library add ST_singleport_{sets}x{ctrlwidth}
 go libraries
 directive set -CLOCKS {{clk {{-CLOCK_PERIOD {period:.2f} -CLOCK_EDGE rising -CLOCK_HIGH_TIME {halfperiod:.2f} -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {{}} -ENABLE_ACTIVE high}}}}
-go assembly
-directive set /doStep/core/REG:rsc -MAP_TO_MODULE {{[Register]}}
-directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
-directive set /doStep/core -CLOCK_OVERHEAD 0.0
-directive set /doStep/core/cachedata:rsc -INTERLEAVE 4
-directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
-directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
-directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
-directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
-directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
-directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
-directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
+go assembly"""
 
-go architect
-//cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
-go schedule
-go extract
-project save {sets}x{ctrlwidth}cachedcore.ccs
+# ~ directive set /doStep/core/REG:rsc -MAP_TO_MODULE {{[Register]}}
+# ~ directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
+# ~ directive set /doStep/core -CLOCK_OVERHEAD 0.0
+# ~ directive set /doStep/core/cachedata:rsc -INTERLEAVE 4
+# ~ directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+# ~ directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
+# ~ directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+# ~ directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
+# ~ directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
+# ~ directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
+# ~ directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
+# ~ directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
+# ~ directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
+
+# ~ go architect
+# ~ cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
+# ~ go schedule
+# ~ go extract
+# ~ project save {sets}x{ctrlwidth}cachedcore.ccs
+# ~ """
+
+exploreCore = """go new
+solution new
+solution rename {solutionname}
+//solution file set ../src/core.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
+// change some directive?
+// change clock?
 """
 
 def is_powerof2(num):
@@ -156,7 +168,7 @@ def doCore(cachesize, associativity, blocksize):
 	memsize = sets
 	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(sets, bitwidth)
 	if not os.path.isfile(memorypath):
-		mem = genMem.format(**globals())
+		mem = genMem.format(**locals())
 		print("Generating control memory {}x{} with area {}".format(sets, bitwidth, area))
 		# ~ print(mem)
 		# ~ sys.exit()
@@ -170,7 +182,7 @@ def doCore(cachesize, associativity, blocksize):
 	area = int(1.4624*memsize*(bitwidth/8)+4915)
 	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
 	if not os.path.isfile(memorypath):
-		mem = genMem.format(**globals())
+		mem = genMem.format(**locals())
 		print("Generating data memory {}x{} with area {}".format(memsize, bitwidth, area))
 		# ~ print(mem)
 		# ~ sys.exit()
@@ -178,13 +190,13 @@ def doCore(cachesize, associativity, blocksize):
 			f.write(mem)
 		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
 
-	#data memory
+	#data memory interleaved
 	bitwidth = 32
 	memsize = int(8*cachesize/bitwidth/associativity)
 	area = int(1.4624*memsize*(bitwidth/8)+4915)
 	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
 	if not os.path.isfile(memorypath):
-		mem = genMem.format(**globals())
+		mem = genMem.format(**locals())
 		print("Generating interleaved data memory {}x{} with area {}".format(memsize, bitwidth, area))
 		# ~ print(mem)
 		# ~ sys.exit()
@@ -266,10 +278,4 @@ if __name__ == "__main__":
 		# ~ subprocess.check_call(["./testbench.sim"], stdout=output)
 
 	doCore(cachesize, associativity, blocksize)
-	
-	# ~ for exploration :
-	# ~ go new
-	# ~ solution new
-	# ~ solution rename abc
-	# ~ solution file set {-Dsize...
 	

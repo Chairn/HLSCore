@@ -9,11 +9,13 @@
 #include <stdio.h>
 #include <map>
 #include <iostream>
+#include <bitset>
 #include <string.h>
 #include "cache.h"
 #include "core.h"
 #include "portability.h"
-#include <bitset>
+#include "mc_scverify.h"
+
 //#include "sds_lib.h"
 
 #ifdef __VIVADO__
@@ -42,9 +44,9 @@ public:
 
     Simulator()
     {
-        ins_memory = (ac_int<32, true> *)malloc(8192 * sizeof(ac_int<32, true>));
-        data_memory = (ac_int<32, true> *)malloc(8192 * sizeof(ac_int<32, true>));
-        for(int i =0; i<8192; i++)
+        ins_memory = (ac_int<32, true> *)malloc(N * sizeof(ac_int<32, true>));
+        data_memory = (ac_int<32, true> *)malloc(N * sizeof(ac_int<32, true>));
+        for(int i =0; i<N; i++)
         {
             ins_memory[i]=0;
             data_memory[i]=0;
@@ -62,12 +64,12 @@ public:
         //Check whether data memory and instruction memory from program will actually fit in processor.
         //cout << ins_memorymap.size()<<endl;
 
-        if(ins_memorymap.size() / 4 > 8192)
+        if(ins_memorymap.size() / 4 > N)
         {
             printf("Error! Instruction memory size exceeded");
             exit(-1);
         }
-        if(data_memorymap.size() / 4 > 8192)
+        if(data_memorymap.size() / 4 > N)
         {
             printf("Error! Data memory size exceeded");
             exit(-1);
@@ -76,14 +78,15 @@ public:
         //fill instruction memory
         for(map<ac_int<32, false>, ac_int<8, false> >::iterator it = ins_memorymap.begin(); it!=ins_memorymap.end(); ++it)
         {
-            ins_memory[(it->first/4) % 8192].set_slc(((it->first)%4)*8,it->second);
+            ins_memory[(it->first/4) % N].set_slc(((it->first)%4)*8,it->second);
+            //debug("@%06x    @%06x    %d    %02x\n", it->first, (it->first/4) % N, ((it->first)%4)*8, it->second);
         }
 
         //fill data memory
         for(map<ac_int<32, false>, ac_int<8, false> >::iterator it = data_memorymap.begin(); it!=data_memorymap.end(); ++it)
         {
-            //data_memory.set_byte((it->first/4)%8192,it->second,it->first%4);
-            data_memory[(it->first%8192)/4].set_slc(((it->first%8192)%4)*8,it->second);
+            //data_memory.set_byte((it->first/4)%N,it->second,it->first%4);
+            data_memory[(it->first%N)/4].set_slc(((it->first%N)%4)*8,it->second);
         }
     }
 
@@ -94,7 +97,7 @@ public:
 
     void setDataMemory(ac_int<32, false> addr, ac_int<8, true> value)
     {
-        if((addr % 8192 )/4 == 0)
+        if((addr % N )/4 == 0)
         {
             //cout << addr << " " << value << endl;
         }
@@ -125,13 +128,17 @@ public:
 };
 
 
-int main(int argc, char** argv)
+CCS_MAIN(int argc, char** argv)
 {
     const char* binaryFile;
     if(argc > 1)
         binaryFile = argv[1];
     else
-        binaryFile = "benchmarks/build/qsort_100.out";
+#ifdef __SYNTHESIS__
+        binaryFile = "../benchmarks/build/matmul4_4.out";
+#else
+        binaryFile = "benchmarks/build/matmul4_4.out";
+#endif
     fprintf(stderr, "Simulating %s\n", binaryFile);
     std::cout << "Simulating " << binaryFile << std::endl;
     ElfFile elfFile(binaryFile);
@@ -149,7 +156,7 @@ int main(int argc, char** argv)
                 counter++;
                 sim.setDataMemory(oneSection->address + byteNumber, sectionContent[byteNumber]);
             }
-            debug("filling %04x to %04x\n", oneSection->address, oneSection->address + oneSection->size);
+            debug("filling data from %06x to %06x\n", oneSection->address, oneSection->address + oneSection->size -1);
         }
 
         if (!oneSection->getName().compare(".text"))
@@ -157,8 +164,9 @@ int main(int argc, char** argv)
             unsigned char* sectionContent = oneSection->getSectionCode();
             for (unsigned int byteNumber = 0; byteNumber<oneSection->size; byteNumber++)
             {
-                sim.setInstructionMemory((oneSection->address + byteNumber) & 0x0FFFF, sectionContent[byteNumber]);
+                sim.setInstructionMemory((oneSection->address + byteNumber) /*& 0x0FFFF*/, sectionContent[byteNumber]);
             }
+            debug("filling instruction from %06x to %06x\n", oneSection->address, oneSection->address + oneSection->size -1);
         }
     }
 
@@ -175,33 +183,36 @@ int main(int argc, char** argv)
 
 
     sim.fillMemory();
-    int dm_in[8192];
-    for(int i(0); i < 8192; ++i)
-        dm_in[i] = sim.getDataMemory()[i];
 
-    unsigned int dm[8192];
-    for(int i = 0; i<8192; i++)
+    unsigned int* dm = new unsigned int[N];
+    unsigned int* im = new unsigned int[N];
+    for(int i = 0; i<N; i++)
     {
         dm[i] = sim.getDataMemory()[i];
+        im[i] = sim.getInstructionMemory()[i];
     }
 
     uint64_t cycles = 1;
     bool exit = false;
     while(!exit)
     {
-        doStep(sim.getPC(), sim.getInstructionMemory(), dm, exit, cycles++);
-        if(cycles % (uint64_t)1e7 == 0)
-            fprintf(stderr, "%lld\n", cycles);
-            //break;//return 1;
+        CCS_DESIGN(doStep(sim.getPC(), im, dm, exit
+                  #ifndef __SYNTHESIS__
+                          , cycles++
+                  #endif
+                          ));
+        if(cycles > (uint64_t)1e7)
+            //fprintf(stderr, "%lld\n", cycles);
+            break;//return 1;
     }
     debug("Successfully executed all instructions in %d cycles\n", cycles);
 
-    std::cout << "dm" <<std::endl;
-    for(int i = 0; i<8192; i++)
+    std::cout << "memory :" <<std::endl;
+    for(int i = 0; i<N; i++)
     {
         if(dm[i])
             printf("%4x : %08x (%d)\n", i, dm[i], dm[i]);
     }
 
-    return 0;
+    CCS_RETURN(0);
 }

@@ -6,15 +6,15 @@
 #include "syscall.h"
 #endif
 
-void memorySet(unsigned int memory[8192], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
+void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
 {
-    ac_int<13, false> wrapped_address = address % 8192;
+    ac_int<32, false> wrapped_address = address % N;
     ac_int<32, true> byte0 = value.slc<8>(0);
     ac_int<32, true> byte1 = value.slc<8>(8);
     ac_int<32, true> byte2 = value.slc<8>(16);
     ac_int<32, true> byte3 = value.slc<8>(24);
     ac_int<2, false> offset = wrapped_address & 0x3;
-    ac_int<13, false> location = wrapped_address >> 2;
+    ac_int<32, false> location = wrapped_address >> 2;
     /*this wont synthesize in catapult */
 #ifdef __SIMULATOR__
     //first read existing value
@@ -40,15 +40,15 @@ void memorySet(unsigned int memory[8192], ac_int<32, false> address, ac_int<32, 
     /*this will synthesize in catapult */
 #ifdef __CATAPULT__
     memory[location] = value;
-    debug("memory enable    W:%08x  @%04x   S:%d\n", value.to_int(), location.to_int(), op.to_int());
+    debug("d @%06x (%06x) W %08x    S:%d\n", wrapped_address.to_int(), location.to_int(), value.to_int(), op.to_int());
 #endif
 }
 
-ac_int<32, true> memoryGet(unsigned int memory[8192], ac_int<32, false> address, ac_int<2, false> op, bool sign)
+ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac_int<2, false> op, bool sign)
 {
-    ac_int<13, false> wrapped_address = address % 8192;
+    ac_int<32, false> wrapped_address = address % N;
     ac_int<2, false> offset = wrapped_address & 0x3;
-    ac_int<13, false> location = wrapped_address >> 2;
+    ac_int<32, false> location = wrapped_address >> 2;
     ac_int<32, true> result;
     result = sign ? -1 : 0;
     ac_int<32, true> mem_read = memory[location];
@@ -83,11 +83,11 @@ ac_int<32, true> memoryGet(unsigned int memory[8192], ac_int<32, false> address,
         result.set_slc(24,byte3);
     }
 
-    debug("memory enable    R:%08x  @%04x   S:%d    %s\n", result.to_int(), location.to_int(), op.to_int(), sign?"true":"false");
+    debug("d @%06x (%06x) R %08x    S:%d    %s\n", wrapped_address.to_int(), location.to_int(), result.to_int(), op.to_int(), sign?"true":"false");
     return result;
 }
 
-void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, ac_int<32, true> ins_memory[8192], FtoDC& ftoDC, ac_int<3, false> mem_lock)
+void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, unsigned int ins_memory[N], FtoDC& ftoDC, ac_int<3, false> mem_lock)
 {
     ac_int<32, false> next_pc;
     if(freeze_fetch)
@@ -111,7 +111,7 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, ac_int<32, tr
     switch(extoMem.opCode)
     {
     case RISCV_BR:
-        control = extoMem.result > 0 ? 1 : 0;
+        control = extoMem.result > 0 ? 1 : 0;   // result is the result of the comparison so either 1 or 0, memvalue is the jump address
         break;
     case RISCV_JAL:
         control = 1;
@@ -125,8 +125,9 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, ac_int<32, tr
     }
     if(!freeze_fetch)
     {
-        (ftoDC.instruction).set_slc(0, ins_memory[(pc & 0x0FFFF)/4]);
+        ftoDC.instruction = ins_memory[pc/4];
         ftoDC.pc = pc;
+        debug("i @%06x (%06x)   %08x    S:3\n", pc.to_int(), pc.to_int()/4, ins_memory[pc/4]);
     }
     pc = control ? jump_pc : next_pc;
 }
@@ -273,6 +274,7 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
     ac_int<66, true> longResult;
     ac_int<33, true> srli_reg;
     ac_int<33, true> srli_result;                   // Execution of the Instruction in EX stage
+    extoMem.pc = dctoEx.pc;
     extoMem.opCode = dctoEx.opCode;
     extoMem.dest = dctoEx.dest;
     extoMem.datac = dctoEx.datac;
@@ -456,7 +458,7 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
 
 void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool& mem_bubble, bool& wb_bubble, bool& cachelock,  // internal core control
             ac_int<32, false>& address, ac_int<2, false>& datasize, bool& cacheenable, bool& writeenable, int& writevalue,       // control & data to cache
-            int readvalue, bool datavalid, unsigned int data_memory[8192]           // data & acknowledgment from cache
+            int readvalue, bool datavalid, unsigned int data_memory[N]           // data & acknowledgment from cache
             #ifndef __SYNTHESIS__
             , int cycles
             #endif
@@ -490,6 +492,9 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
         {
             mem_lock = mem_lock - 1;
             memtoWB.WBena = 0;
+            simul(if(mem_lock)
+                debug("I @%06x (%06x)\n", extoMem.pc.to_int(), extoMem.pc.to_int()/4);
+            )
         }
 
         memtoWB.sys_status = extoMem.sys_status;
@@ -543,7 +548,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     break;
                 }
 #ifndef nocache
-                address = memtoWB.result % 8192;
+                address = memtoWB.result % N;
                 cacheenable = true;
                 writeenable = false;
                 cachelock = true;
@@ -567,7 +572,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     break;
                 }
 #ifndef nocache
-                address = memtoWB.result % 8192;
+                address = memtoWB.result % N;
                 cacheenable = true;
                 writeenable = true;
                 writevalue = extoMem.datac;
@@ -577,7 +582,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                 //debug("%5d  ", cycles);
                 memorySet(data_memory, memtoWB.result, extoMem.datac, datasize);
 #endif
-                //data_memory[(memtoWB.result/4)%8192] = extoMem.datac;
+                //data_memory[(memtoWB.result/4)%N] = extoMem.datac;
                 break;
             }
         }
@@ -593,24 +598,24 @@ void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& earl
 #ifndef __SYNTHESIS__
     if(memtoWB.sys_status == 1)
     {
-        debug("Exit system call received, Exiting... ");
+        debug("Exit system call received, Exiting...\n");
         early_exit = 1;
     }
     else if(memtoWB.sys_status == 2)
     {
-        debug("Unknown system call received, Exiting... ");
+        debug("Unknown system call received, Exiting...\n");
         early_exit = 1;
     }
 #endif
 }
 
-void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], unsigned int dm[8192], bool& exit
+void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int dm[N], bool& exit
 #ifndef __SYNTHESIS__
     , uint64_t cycles
 #endif
 )
 {
-    static CacheControl cachectrl = {0};
+    static DCacheControl cachectrl = {0};
     static unsigned int cachedata[Sets][Blocksize][Associativity] = {0};
     static bool dummy = ac::init_array<AC_VAL_DC>((unsigned int*)cachedata, Sets*Associativity*Blocksize);
     (void)dummy;
@@ -643,7 +648,7 @@ void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], unsign
     static DCtoEx dctoEx = {0};
     static FtoDC ftoDC = {0};
 
-    static ac_int<32, true> REG[32] = {0,0,0xf00000,0,0,0,0,0,
+    static ac_int<32, true> REG[32] = {0,0,0xf00000,0,0,0,0,0,  //0xf00000 is stack address and so is the highest reachable address
                                        0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0,0}; // Register file
@@ -679,7 +684,8 @@ void doStep(ac_int<32, false> startpc, ac_int<32, true> ins_memory[8192], unsign
     simul(
     for(int i=0; i<32; i++)
     {
-        debug(";%08x",(int)REG[i]);
+        if(REG[i])
+            debug(";%d:%08x", i, (int)REG[i]);
     }
     )
     debug("\n");*/

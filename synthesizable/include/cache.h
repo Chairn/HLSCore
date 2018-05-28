@@ -12,8 +12,6 @@
 #define Policy                      LRU
 #endif
 
-#define N 8192
-
 #ifndef Size
 #define Size                        1024    // bytes
 #endif
@@ -60,17 +58,76 @@ enum {
     CachetoMem = 1
 };
 
-enum {
+namespace IState {
+enum IState {
+    Idle         = 0,
+    StoreControl    ,
+    Fetch           ,
+    IStates
+};
+}
+
+namespace DState {
+enum DState {
     Idle         = 0,
     StoreControl    ,
     StoreData       ,
     FirstWriteBack  ,
     WriteBack       ,
     Fetch           ,
-    States
+    DStates
+};
+}
+
+struct ISetControl
+{
+    unsigned int data[Associativity];
+    ac_int<32-tagshift, false> tag[Associativity];
+    bool valid[Associativity];
+#if Associativity == 1
+    //ac_int<1, false> policy;
+#else
+  #if Policy == FIFO
+    ac_int<ac::log2_ceil<Associativity>::val, false> policy;
+  #elif Policy == LRU
+    ac_int<Associativity * (Associativity-1) / 2, false> policy;
+  #elif Policy == RANDOM
+    //ac_int<ac::log2_ceil<Associativity>::val, false> policy;
+  #else   // None
+    //ac_int<1, false> policy;
+  #endif
+#endif
 };
 
-struct SetControl
+struct ICacheControl
+{
+    ac_int<32-tagshift, false> tag[Sets][Associativity];
+    ac_int<32, false> workAddress;
+    bool valid[Sets][Associativity];
+    IState::IState state;
+    ac_int<ac::log2_ceil<Blocksize>::val, false> i;
+    ac_int<32, false> valuetowrite;
+    ac_int<ac::log2_ceil<Sets>::val, false> currentset;
+#if Associativity == 1
+    ac_int<1, false> currentway;
+    //ac_int<1, false> policy[Sets];
+#else
+    ac_int<ac::log2_ceil<Associativity>::val, false> currentway;
+  #if Policy == FIFO
+    ac_int<ac::log2_ceil<Associativity>::val, false> policy[Sets];
+  #elif Policy == LRU
+    ac_int<Associativity * (Associativity-1) / 2, false> policy[Sets];
+  #elif Policy == RANDOM
+    ac_int<32, false> policy;   //32 bits for the whole cache
+  #else   // None alias direct mapped
+    //ac_int<1, false> policy[Sets];
+  #endif
+#endif
+
+    ISetControl setctrl;
+};
+
+struct DSetControl
 {
     unsigned int data[Associativity];
     ac_int<32-tagshift, false> tag[Associativity];
@@ -91,13 +148,13 @@ struct SetControl
 #endif
 };
 
-struct CacheControl
+struct DCacheControl
 {
     ac_int<32-tagshift, false> tag[Sets][Associativity];
     ac_int<32, false> workAddress;
     bool dirty[Sets][Associativity];
     bool valid[Sets][Associativity];
-    ac_int<ac::log2_ceil<States>::val, false> state;
+    DState::DState state;
     ac_int<ac::log2_ceil<Blocksize>::val, false> i;
     ac_int<32, false> valuetowrite;
     ac_int<ac::log2_ceil<Sets>::val, false> currentset;
@@ -117,10 +174,10 @@ struct CacheControl
   #endif
 #endif
 
-    SetControl setctrl;
+    DSetControl setctrl;
 };
 
-void cache(CacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blocksize][Associativity],      // control, memory and cachedata
+void cache(DCacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blocksize][Associativity],      // control, memory and cachedata
            ac_int<32, false> address, ac_int<2, false> datasize, bool cacheenable, bool writeenable, int writevalue,    // from cpu
            int& read, bool& datavalid                                                       // to cpu
 #ifndef __SYNTHESIS__
