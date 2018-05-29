@@ -32,13 +32,27 @@ sets = 8
 os.chdir("traces")
 for p in progs:
 	print("\nComparing", p)
+	with open("ipath/nocache_"+p+".log", "r") as ref:
+		ipath = []
+		for r in ref:
+			if r.startswith("i"):
+				l = r.split()
+				ad = int(l[1][1:], 16)
+				ipath.append(ad)
+			elif r.startswith("I"):
+				l = r.split()
+				ad = int(l[1][1:], 16)
+				for i, el in enumerate(ipath[-5:]):
+					if el == ad:
+						ipath.pop(i+len(ipath)-5)
+		
 	with open("cache_"+p+".log", "r") as cache:
 		dpolicy = [list(range(assoc-1, -1, -1)) for i in range(sets)]
 		ipolicy = [list(range(assoc-1, -1, -1)) for i in range(sets)]
 		cachemem = {}
 		cacheimem = {}
-		cachepcs = [0] * 10**7;
-		pc = 0;
+		cachepcs = []
+		pc = 0
 		i = 0
 		maxad = 0
 		for c in cache:
@@ -47,8 +61,8 @@ for p in progs:
 				l = c.split()
 				ad = int(l[1][1:], 16)
 				ins = int(l[3], 16)
-				cachepcs[pc] = ad
-				pc = pc+1
+				cachepcs.append(ad)
+				pc = pc + 1
 		
 				if ad in cacheimem:
 					assert ins == cacheimem[ad], "error line {} : {} instruction is incorrect, expected {:08x} got {:08x} @{:06x}".format(i, n, cacheimem[ad], ins, ad)
@@ -75,8 +89,13 @@ for p in progs:
 				if ad > maxad:
 					maxad = ad
 			elif c.startswith("I"):
-				pass
-				
+				l = c.split()
+				ad = int(l[1][1:], 16)
+				for idx, el in enumerate(cachepcs[pc-5:pc]):
+					if el == ad:
+						cachepcs.pop(idx+pc-5)
+						pc = pc - 1
+
 			elif c.startswith("da"):
 				if c.find("write", 50) != -1:
 					l = c[69:75].split()
@@ -99,6 +118,10 @@ for p in progs:
 			val = int(l[2], 16)
 			cacheendmem[ad] = val
 
+		for idx, pc in enumerate(ipath):
+			assert pc == cachepcs[idx], "In cache log, instruction path incorrect on {}th instruction : expected @{:06x} got @{:06x}".format(idx, pc, cachepcs[idx])
+			
+		assert ipath == cachepcs
 		addresses = cachemem.keys() & cacheendmem.keys()
 		for ad in addresses:
 			assert cachemem[ad][0] == cacheendmem[ad], "In cache log, memory not consistent @{:06x} : expected {:08x} got {:08x}".format(i, cachemem[ad][0], cacheendmem[ad])
@@ -106,7 +129,7 @@ for p in progs:
 	with open("nocache_"+p+".log", "r") as nocache:
 		mem = {}
 		imem = {}
-		pcs = [0] * 10**7
+		pcs = []
 		pc = 0
 		i = 0
 		maxad = 0
@@ -116,15 +139,14 @@ for p in progs:
 				l = n.split()
 				ad = int(l[1][1:], 16)
 				ins = int(l[3], 16)
-				pcs[pc] = ad
-				pc = pc+1
+				pcs.append(ad)
+				pc = pc + 1
 				
 				if ad in imem:
 					assert ins == imem[ad], "error line {} : {} instruction is incorrect, expected {:08x} got {:08x} @{:06x}".format(i, n, imem[ad], ins, ad)
 				else:
 					imem[ad] = ins
-			elif n.startswith("I"):
-				pass
+					
 			elif n.startswith("d"):
 				l = n.split()
 				ad = int(l[1][1:], 16)
@@ -141,7 +163,15 @@ for p in progs:
 					
 				if ad > maxad:
 					maxad = ad
-				
+					
+			elif n.startswith("I"):
+				l = n.split()
+				ad = int(l[1][1:], 16)
+				for idx, el in enumerate(pcs[pc-5:pc]):
+					if el == ad:
+						pcs.pop(idx+pc-5)
+						pc = pc - 1
+						
 			elif n.startswith("Su"):
 				l = n.split()
 				cycles = " ".join(l[-2:])
@@ -162,6 +192,7 @@ for p in progs:
 		for ad in addresses:
 			assert mem[ad][0] == endmem[ad], "In uncached, memory not consistent @{:06x} : expected {:08x} got {:08x}".format(ad, mem[ad][0], endmem[ad])
 
-	assert cachepcs == pcs, "Instructions paths are different in {}".format(p)
+	for idx, pc in enumerate(ipath):
+		assert pc == pcs[idx], "In uncached, instruction path incorrect on {}th instruction : expected @{:06x} got @{:06x}".format(idx, pc, pcs[idx])
 	assert cachemem == mem, "Memory simulations are different in {}".format(p)
 	assert cacheendmem == endmem, "End memory are different in {}".format(p)
