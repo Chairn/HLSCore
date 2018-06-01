@@ -30,8 +30,21 @@
 #ifndef __SYNTHESIS__
 #include <cstdio>
 #include <stdint.h>
-#define debug(...)   printf(__VA_ARGS__)
-#define simul(...)   __VA_ARGS__
+#define debug(...)      printf(__VA_ARGS__)
+#define simul(...)      __VA_ARGS__
+
+#ifndef nocoredebug
+#define coredebug(...)  printf(__VA_ARGS__)
+#else
+#define coredebug(...)
+#endif
+
+#ifndef nocachedebug
+#define cachedebug(...) printf(__VA_ARGS__)
+#else
+#define cachedebug(...)
+#endif
+
 #else
 #define debug(...)
 #define simul(...)
@@ -43,5 +56,10 @@
 #define DRAM_SIZE   (1 << 24)
 
 #define N           DRAM_SIZE
+
+
+void formatread (ac_int<32, false> address, ac_int<2, false> datasize, bool sign, ac_int<32, false>& read);
+void formatwrite(ac_int<32, false> address, ac_int<2, false> datasize, ac_int<32, false>& mem, ac_int<32, false> write);
+
 
 #endif /* For PORTABILITY_H_ */

@@ -12,6 +12,7 @@ struct FtoDC
 struct DCtoEx
 {
     ac_int<32, false> pc;
+    ac_int<32, false> instruction;
     ac_int<32, true> dataa; //First data from register file
     ac_int<32, true> datab; //Second data, from register file or immediate value
     ac_int<32, true> datac;
@@ -31,11 +32,12 @@ struct DCtoEx
 struct ExtoMem
 {
     ac_int<32, false> pc;
+    ac_int<32, false> instruction;
     ac_int<32, true> result; //Result of the EX stage
     ac_int<32, true> datad;
     ac_int<32, true> datac; //Data to be stored in memory (if needed)
     ac_int<5, false> dest; //Register to be written at WB stage
-    ac_int<1, false> WBena; //Is a WB is needed ?
+    bool WBena; //Is a WB is needed ?
     ac_int<7, false> opCode; //OpCode of the operation
     ac_int<32, true> memValue; //Second data, from register file or immediate value
     ac_int<5, false> rs2;
@@ -45,9 +47,11 @@ struct ExtoMem
 
 struct MemtoWB
 {
+    ac_int<32, false> pc;
+    ac_int<32, false> instruction;
     ac_int<32, true> result; //Result to be written back
     ac_int<5, false> dest; //Register to be written at WB stage
-    ac_int<1, false> WBena; //Is a WB is needed ?
+    bool WBena; //Is a WB is needed ?
     ac_int<7, false> opCode;
     ac_int<2, false> sys_status;
 };

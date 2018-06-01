@@ -6,7 +6,7 @@ INC_PARAMS=$(foreach d, $(INC), -I$d)
 VARS_CAT=-D__DEBUG__=1 -D__CATAPULT__=1
 VARS_VIV=-D__DEBUG__=1 -D__VIVADO__=1
 DEFINES=
-FILES=cache.cpp core.cpp elfFile.cpp reformeddm_sim.cpp syscall.cpp
+FILES=cache.cpp core.cpp elfFile.cpp portability.cpp reformeddm_sim.cpp syscall.cpp
 S=./src
 S_FILES=$(foreach f, $(FILES), $(S)/$f)
 HEADER=cache.h core.h elf.h elfFile.h portability.h riscvISA.h syscall.h DataMemory.h

@@ -181,16 +181,66 @@ CCS_MAIN(int argc, char** argv)
         }
     }
 
-
     sim.fillMemory();
+
+    /*for(int s(0); s < 2; ++s)
+    {
+        debug("%s\n", s?"Sign extension":"No sign extension");
+        for(int size(0); size < 4; ++size)
+        {
+            if(size == 2)
+                continue;
+            debug("Size %d\n", size);
+            for(ac_int<32, false> i(0); i < 256; ++i)
+            {
+                ac_int<32, false> r = (i << 24) + (i << 16) + (i <<8) + i;
+                formatread(0, size, s, r);
+                debug("%08x ", r.to_int());
+            }
+            debug("\n");
+        }
+        for(int ad(0); ad < 4; ++ad)
+        {
+            debug("Address %d\n", ad);
+            for(ac_int<32, false> i(0); i < 256; ++i)
+            {
+                ac_int<32, false> r = (i << 24) + (i << 16) + (i <<8) + i;
+                formatread(ad, 0, s, r);
+                debug("%08x ", r.to_int());
+            }
+            debug("\n");
+        }
+    }
+
+    return 0;*/
+
 
     unsigned int* dm = new unsigned int[N];
     unsigned int* im = new unsigned int[N];
-    for(int i = 0; i<N; i++)
+    for(int i = 0; i < N; i++)
     {
         dm[i] = sim.getDataMemory()[i];
         im[i] = sim.getInstructionMemory()[i];
     }
+
+    debug("instruction memory :\n");
+    for(int i = 0; i < N; i++)
+    {
+        if(im[i])
+            printf("%06x : %08x (%d)\n", 4*i, im[i], im[i]);
+    }
+    debug("data memory :\n");
+    for(int i = 0; i < N; i++)
+    {
+        for(int j(0); j < 4; ++j)
+        {
+            if(dm[i] & (0xFF << (8*j)))
+            {
+                printf("%06x : %02x (%d)\n", 4*i+j, (dm[i] & (0xFF << (8*j))) >> (8*j), (dm[i] & (0xFF << (8*j))) >> (8*j));
+            }
+        }
+    }
+    debug("end of preambule\n");
 
     uint64_t cycles = 1;
     bool exit = false;
@@ -208,10 +258,15 @@ CCS_MAIN(int argc, char** argv)
     debug("Successfully executed all instructions in %d cycles\n", cycles);
 
     std::cout << "memory :" <<std::endl;
-    for(int i = 0; i<N; i++)
+    for(int i = 0; i < N; i++)
     {
-        if(dm[i])
-            printf("%4x : %08x (%d)\n", i, dm[i], dm[i]);
+        for(int j(0); j < 4; ++j)
+        {
+            if(dm[i] & (0xFF << (8*j)))
+            {
+                printf("%06x : %02x (%d)\n", 4*i+j, (dm[i] & (0xFF << (8*j))) >> (8*j), (dm[i] & (0xFF << (8*j))) >> (8*j));
+            }
+        }
     }
 
     CCS_RETURN(0);

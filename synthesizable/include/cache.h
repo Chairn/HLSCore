@@ -60,7 +60,8 @@ enum {
 
 namespace IState {
 enum IState {
-    Idle         = 0,
+    Start        = 0,
+    Idle            ,
     StoreControl    ,
     Fetch           ,
     IStates
@@ -177,8 +178,8 @@ struct DCacheControl
     DSetControl setctrl;
 };
 
-void cache(DCacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blocksize][Associativity],      // control, memory and cachedata
-           ac_int<32, false> address, ac_int<2, false> datasize, bool cacheenable, bool writeenable, int writevalue,    // from cpu
+void dcache(DCacheControl& ctrl, unsigned int dmem[N], unsigned int data[Sets][Blocksize][Associativity],      // control, memory and cachedata
+           ac_int<32, false> address, ac_int<2, false> datasize, bool signenable, bool cacheenable, bool writeenable, int writevalue,    // from cpu
            int& read, bool& datavalid                                                       // to cpu
 #ifndef __SYNTHESIS__
            , uint64_t cycles
