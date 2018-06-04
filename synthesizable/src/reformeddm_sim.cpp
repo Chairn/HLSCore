@@ -251,7 +251,7 @@ CCS_MAIN(int argc, char** argv)
                           , cycles++
                   #endif
                           ));
-        if(cycles > (uint64_t)1e7)
+        if(cycles > (uint64_t)2e6)
             //fprintf(stderr, "%lld\n", cycles);
             break;//return 1;
     }

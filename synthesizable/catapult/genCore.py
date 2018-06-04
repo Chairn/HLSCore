@@ -114,28 +114,28 @@ solution library add ST_singleport_{interleaveddatasize}x{datawidth}
 solution library add ST_singleport_{sets}x{ctrlwidth}
 go libraries
 directive set -CLOCKS {{clk {{-CLOCK_PERIOD {period:.2f} -CLOCK_EDGE rising -CLOCK_HIGH_TIME {halfperiod:.2f} -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {{}} -ENABLE_ACTIVE high}}}}
-go assembly"""
+go assembly
 
-# ~ directive set /doStep/core/REG:rsc -MAP_TO_MODULE {{[Register]}}
-# ~ directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
-# ~ directive set /doStep/core -CLOCK_OVERHEAD 0.0
-# ~ directive set /doStep/core/cachedata:rsc -INTERLEAVE 4
-# ~ directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-# ~ directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
-# ~ directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-# ~ directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
-# ~ directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
-# ~ directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
-# ~ directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
-# ~ directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
-# ~ directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
+directive set /doStep/core/REG:rsc -MAP_TO_MODULE {{[Register]}}
+directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
+directive set /doStep/core -CLOCK_OVERHEAD 0.0
+directive set /doStep/core/cachedata:rsc -INTERLEAVE 4
+directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
+directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
+directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
+directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
+directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
+directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
+directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
 
-# ~ go architect
-# ~ cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
-# ~ go schedule
-# ~ go extract
-# ~ project save {sets}x{ctrlwidth}cachedcore.ccs
-# ~ """
+go architect
+cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
+go schedule
+go extract
+project save {sets}x{ctrlwidth}cachedcore.ccs
+"""
 
 exploreCore = """go new
 solution new

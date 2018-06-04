@@ -8,7 +8,7 @@
 
 void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
 {
-    ac_int<32, false> wrapped_address = address % N;
+    ac_int<32, false> wrapped_address = address;// % N;
     ac_int<32, true> byte0 = value.slc<8>(0);
     ac_int<32, true> byte1 = value.slc<8>(8);
     ac_int<32, true> byte2 = value.slc<8>(16);
@@ -54,7 +54,7 @@ void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, tru
 
 ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac_int<2, false> op, bool sign)
 {
-    ac_int<32, false> wrapped_address = address % N;
+    ac_int<32, false> wrapped_address = address;// % N;
     ac_int<2, false> offset = wrapped_address & 0x3;
     ac_int<32, false> location = wrapped_address >> 2;
     ac_int<32, true> result;
@@ -109,7 +109,10 @@ ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac
     return mem_read;
 }
 
-void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, unsigned int ins_memory[N], FtoDC& ftoDC, ac_int<3, false> mem_lock)
+void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC, ac_int<3, false> mem_lock, // cpu internal logic
+        ac_int<32, false>& iaddress,                                                // to cache
+        ac_int<32, false> cachepc, unsigned int instruction, bool insvalid,         // from cache
+        unsigned int ins_memory[N])
 {
     ac_int<32, false> next_pc;
     if(freeze_fetch)
@@ -145,6 +148,51 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, unsigned int 
         control = 0;
         break;
     }
+
+#if 0
+    if(!freeze_fetch)
+    {
+        if(control && mem_lock <= 1)
+        {
+            ftoDC.instruction = 0x13;  // insert bubble (0x13 is NOP instruction and corresponds to ADDI r0, r0, 0)
+            ftoDC.pc = 0;
+            pc = control ? jump_pc : next_pc;
+            coredebug("jumping%s& ", mem_lock > 1?" (memlock) ":" ");
+        }
+
+        if(insvalid && cachepc == pc)
+        {
+            ftoDC.instruction = instruction;
+            ftoDC.pc = pc;
+            pc = control ? jump_pc : next_pc;
+        }
+        else
+        {
+            ftoDC.instruction = 0x13;  // insert bubble (0x13 is NOP instruction and corresponds to ADDI r0, r0, 0)
+            ftoDC.pc = 0;
+        }
+
+        iaddress = pc;
+        coredebug("Requesting @%06x in fetch\n", pc.to_int());
+    }
+    else
+    {
+        pc = control ? jump_pc : next_pc;
+        iaddress = pc;
+        ftoDC.instruction = 0x13;
+        ftoDC.pc = 0;
+        debug("!!! Fetch frozen !!!\n");
+    }
+    simul(if(ftoDC.pc)
+    {
+        coredebug("Ft   @%06x   %08x\n", ftoDC.pc.to_int(), ftoDC.instruction.to_int());
+    }
+    else
+    {
+        coredebug("Ft   \n");
+    })
+
+#else
     if(!freeze_fetch)
     {
         ftoDC.instruction = ins_memory[pc/4];
@@ -160,6 +208,9 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, unsigned int 
         coredebug("Ft   \n");
     })
     pc = control ? jump_pc : next_pc;
+    //debug("i @%06x (%06x)   %08x    %d\n", pc.to_int(), (pc/4).to_int(), ftoDC.instruction.to_int(), mem_lock > 1);
+
+#endif
 }
 
 void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB, DCtoEx& dctoEx, ac_int<7, false>& prev_opCode,
@@ -613,7 +664,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     break;
                 }
 #ifndef nocache
-                address = memtoWB.result % N;
+                address = memtoWB.result;// % N;
                 signenable = sign;
                 cacheenable = true;
                 writeenable = false;
@@ -639,7 +690,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     break;
                 }
 #ifndef nocache
-                address = memtoWB.result % N;
+                address = memtoWB.result;// % N;
                 signenable = false;
                 cacheenable = true;
                 writeenable = true;
@@ -700,32 +751,45 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
 #endif
 )
 {
-    static DCacheControl cachectrl = {0};
-    static unsigned int cachedata[Sets][Blocksize][Associativity] = {0};
-    static bool dummy = ac::init_array<AC_VAL_DC>((unsigned int*)cachedata, Sets*Associativity*Blocksize);
+    static ICacheControl ictrl = {0};
+    static unsigned int idata[Sets][Blocksize][Associativity] = {0};
+    static bool idummy = ac::init_array<AC_VAL_DC>((unsigned int*)idata, Sets*Associativity*Blocksize);
+    (void)idummy;
+    static bool itaginit = ac::init_array<AC_VAL_DC>((ac_int<32-tagshift, false>*)ictrl.tag, Sets*Associativity);
+    (void)itaginit;
+    static bool ivalinit = ac::init_array<AC_VAL_0>((bool*)ictrl.valid, Sets*Associativity);
+    (void)ivalinit;
+    static DCacheControl dctrl = {0};
+    static unsigned int ddata[Sets][Blocksize][Associativity] = {0};
+    static bool dummy = ac::init_array<AC_VAL_DC>((unsigned int*)ddata, Sets*Associativity*Blocksize);
     (void)dummy;
-    static bool taginit = ac::init_array<AC_VAL_DC>((ac_int<32-tagshift, false>*)cachectrl.tag, Sets*Associativity);
+    static bool taginit = ac::init_array<AC_VAL_DC>((ac_int<32-tagshift, false>*)dctrl.tag, Sets*Associativity);
     (void)taginit;
-    static bool dirinit = ac::init_array<AC_VAL_DC>((bool*)cachectrl.dirty, Sets*Associativity);
+    static bool dirinit = ac::init_array<AC_VAL_DC>((bool*)dctrl.dirty, Sets*Associativity);
     (void)dirinit;
-    static bool valinit = ac::init_array<AC_VAL_0>((bool*)cachectrl.valid, Sets*Associativity);
+    static bool valinit = ac::init_array<AC_VAL_0>((bool*)dctrl.valid, Sets*Associativity);
     (void)valinit;
     simul(if(cycles == 1)
         for(int i(0); i < Sets*Associativity; ++i)
-            assert(cachectrl.valid[i/Sets][i%Associativity] == 0);
+            assert(dctrl.valid[i/Sets][i%Associativity] == 0);
     )
 #if Policy == FIFO
-    static bool polinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)cachectrl.policy, Sets);
-    (void)polinit;
+    static bool dpolinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)dctrl.policy, Sets);
+    (void)dpolinit;
+    static bool ipolinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)ictrl.policy, Sets);
+    (void)ipolinit;
 #elif Policy == LRU
-    static bool polinit = ac::init_array<AC_VAL_DC>((ac_int<Associativity * (Associativity-1) / 2, false>*)cachectrl.policy, Sets);
-    (void)polinit;
+    static bool dpolinit = ac::init_array<AC_VAL_DC>((ac_int<Associativity * (Associativity-1) / 2, false>*)dctrl.policy, Sets);
+    (void)dpolinit;
+    static bool ipolinit = ac::init_array<AC_VAL_DC>((ac_int<Associativity * (Associativity-1) / 2, false>*)ictrl.policy, Sets);
+    (void)ipolinit;
 #elif Policy == RANDOM
     static bool rndinit = false;
     if(!rndinit)
     {
         rndinit = true;
-        cachectrl.policy = 0xF2D4B698;
+        dctrl.policy = 0xF2D4B698;
+        ictrl.policy = 0xF2D4B698;
     }
 #endif
     static MemtoWB memtoWB = {0,0x13,0,0,0,0x13,0};
@@ -755,17 +819,27 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     if(!init)
     {
         init = true;
-        pc = startpc;
+        pc = startpc;   // startpc - 4 ?
     }
 
-    static ac_int<32, false> address = 0;
+    /// Instruction cache
+    static ac_int<32, false> iaddress = 0;
+    static ac_int<32, false> cachepc = 0;
+    static int instruction = 0;
+    static bool insvalid = false;
+
+    /// Data cache
+    static ac_int<32, false> daddress = 0;
     static ac_int<2, false> datasize = 0;
     static bool signenable = false;
-    static bool cacheenable = false;
+    static bool dcacheenable = false;
     static bool writeenable = false;
     static int writevalue = 0;
     static int readvalue = 0;
     static bool datavalid = false;
+
+    if(cycles == 1)
+        init = true;
 
     doWB(REG, memtoWB, wb_bubble, early_exit);
     simul(debug("%d ", cycles);
@@ -778,14 +852,14 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     debug("\n");
 
     do_Mem(extoMem, memtoWB, mem_lock, mem_bubble, wb_bubble, cachelock,                // internal core control
-           address, datasize, signenable, cacheenable, writeenable, writevalue,         // control & data to cache
+           daddress, datasize, signenable, dcacheenable, writeenable, writevalue,         // control & data to cache
            readvalue, datavalid, dm                                                     // data & acknowledgment from cache
        #ifndef __SYNTHESIS__
            , cycles
        #endif
            );
 #ifndef nocache
-    dcache(cachectrl, dm, cachedata, address, datasize, signenable, cacheenable, writeenable, writevalue, readvalue, datavalid
+    dcache(dctrl, dm, ddata, daddress, datasize, signenable, dcacheenable, writeenable, writevalue, readvalue, datavalid
       #ifndef __SYNTHESIS__
           , cycles
       #endif
@@ -796,7 +870,16 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     {
         Ex(dctoEx, extoMem, ex_bubble, mem_bubble, sys_status);
         DC(REG, ftoDC, extoMem, memtoWB, dctoEx, prev_opCode, prev_pc, mem_lock, freeze_fetch, ex_bubble);
-        Ft(pc,freeze_fetch, extoMem, ins_memory, ftoDC, mem_lock);
+        Ft(pc,freeze_fetch, extoMem, ftoDC, mem_lock, iaddress, cachepc, instruction, insvalid, ins_memory);
+#ifndef nocache
+        icache(ictrl, ins_memory, idata, iaddress, cachepc, instruction, insvalid
+       #ifndef __SYNTHESIS__
+               , cycles
+       #endif
+               );
+#endif
+        /*if(cycles > 1e1)
+            exit = true;*/
     }
 
 
@@ -807,9 +890,9 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
         //cache write back for simulation
         for(unsigned int i  = 0; i < Sets; ++i)
             for(unsigned int j = 0; j < Associativity; ++j)
-                if(cachectrl.dirty[i][j] && cachectrl.valid[i][j])
+                if(dctrl.dirty[i][j] && dctrl.valid[i][j])
                     for(unsigned int k = 0; k < Blocksize; ++k)
-                        dm[(cachectrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2)) | k] = cachedata[i][k][j];
+                        dm[(dctrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2)) | k] = ddata[i][k][j];
     )
     }
 }

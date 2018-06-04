@@ -16,7 +16,7 @@ catapult: $(S_FILES) $(I_HEADER)
 	g++ -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT) $(DEFINES)
 
 debug: $(S_FILES) $(I_HEADER)
-	g++ -g -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT) $(DEFINES)
+	g++ -g -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT) $(DEFINES) -DDebug
 
 vivado.sim: $(S_FILES) $(I_HEADER) 
 	g++ -o vivado.sim $(INC_PARAMS) $(S_FILES) $(VARS_VIV)

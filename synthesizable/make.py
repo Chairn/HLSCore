@@ -31,44 +31,35 @@ class Boundaries:
 	def append(self, m, M):
 		self.bounds.append( (m, M) )
 		
-class mylist(list):
-	"""Standard list with preallocate method."""
-	def __init__(self, *args, **kwargs):
-		list.__init__(self, *args, **kwargs)
-		self.idx = list.__len__(self)		# current index used for append
-		self.size = list.__len__(self)		# real size
-	
-	def __len__(self):
-		return self.idx
-	
-	def append(self, item):
-		if self.idx == self.size:
-			list.append(self, item)
-			self.idx += 1
-			self.size += 1
-		else:
-			self[self.idx] = item
-			self.idx += 1
-			
-	def clear(self):
-		list.clear(self)
-		self.idx = 0
-		self.size = 0
-		
-	def reserve(self, size, item=None):
-		if size <= self.size:
-			return
-		
-		list.extend(self, [item] * (size - self.size))
-		self.size = size
-		assert self.size == list.__len__(self)
-		
-	
-def lru(pol, way):
+##########################
+## Replacement policies ##
+##########################
+
+def noupdate(pol, way):		# called on promotion if policy has no promotion
+	pass
+
+def noselect(pol, way):		# called on selection if policy has no selection
+	pass
+
+def lru(pol, way):			# called only on promotion
 	ind = pol.index(way)
 	for i in range(ind,0,-1):
 		pol[i] = pol[i-1]
 	pol[0] = way
+	
+def random(pol, way):		# called only on selection
+	try:
+		random.__status = ((bool(random.__status & 0x80000000) ^ bool(random.__status & 0x200000) ^ \
+		bool(random.__status & 2) ^ bool(random.__status & 1)) | (random.__status << 1)) & 0xFFFFFFFF
+	except AttributeError:
+		random.__status = 0xF2D4B698
+		
+def fifo(pol, way):			# called only on selection
+	pol[0] = (pol[0] + 1) % assoc
+
+##########################
+##   Script functions   ##
+##########################
 	
 def formatread(dmem, ad, size):
 	read = 0
@@ -109,7 +100,7 @@ def readpreambule(fichier, prog):
 	
 	line = fichier.readline()
 	i += 1
-	imem = [0] * 2**24
+	imem = [0] * N
 	while not line.startswith("data"):
 		l = line.split()
 		ad = int(l[0], 16)
@@ -123,7 +114,7 @@ def readpreambule(fichier, prog):
 			
 	line = fichier.readline()
 	i += 1
-	dmem = [(0, False)] * 2**24
+	dmem = [(0, False)] * N
 	while not line.startswith("end"):
 		l = line.split()
 		ad = int(l[0], 16)
@@ -139,18 +130,18 @@ def parsefile(fichier, prog, cache=False):
 	
 	reg = [0] * 32
 	reg[2] = 0x00f00000
-	ipath = mylist()
-	ipath.append( (0,0,0,0) )		# pc, instruction, registre modifié, nouvelle valeur
-	ipath.reserve(10**7, (0,0,0,0))
-	dpath = mylist()				# address, valeur, (0:read, 1:write), datasize, sign extension
-	dpath.reserve(10**6, (0,0,False,0,False))
+	global ipath, dpath
+	ipath = list()	
+	ipath.append( (0,0,0) )			# pc, registre modifié, nouvelle valeur
+	dpath = list()# (0,0,False,0,False)	# address, valeur, (0:read, 1:write), datasize, sign extension
+		
 	#dmem = {}	
 	#imem = {}
 	endmem = {}
 	
 	if cache:
 		dpolicy = [[i for i in range(assoc)] for i in range(sets)]
-		#ipolicy = [[i for i in range(assoc-1,-1,-1)] for i in range(sets)]
+		#ipolicy = [[i for i in range(assoc)] for i in range(sets)]
 	
 	for line in fichier:
 		i += 1
@@ -204,7 +195,7 @@ def parsefile(fichier, prog, cache=False):
 				sett = int(l[-2])
 				way = int(l[-1])
 				
-				lru(dpolicy[sett], way)
+				updatepolicy(dpolicy[sett], way)		# promotion of the accessed way
 				
 			if ad & 1:
 				assert size == 0, "{} line {} : {} address misalignment @{:06x}"\
@@ -258,6 +249,8 @@ def parsefile(fichier, prog, cache=False):
 				pass
 			else:
 				assert False
+				
+			policyselect(dpolicy[sett], way)	# selection of the replaced way
 			
 			
 		# ~ elif line.startswith("M"):		# Memorization
@@ -276,6 +269,9 @@ def parsefile(fichier, prog, cache=False):
 			l = line.split()
 			cycles = " ".join(l[-2:])
 			break
+	
+	print(p, "done in", cycles)
+	cycles = int(cycles.split()[0])
 		
 	assert fichier.readline() == "memory :\n"
 	for line in fichier:					# read end memory
@@ -303,7 +299,7 @@ def parsefile(fichier, prog, cache=False):
 	for ad in bis:
 		assert dmem[ad] == bis[ad], "{}\n Memory not consistent @{:06x} " \
 		": expected {} got {}".format(prog, ad, dmem[ad], bis[ad])
-	return ipath, dpath, imem, dmem, endmem
+	return ipath, dpath, imem, dmem, endmem, cycles
 
 
 progs = os.listdir("benchmarks/build")
@@ -319,55 +315,67 @@ parser.add_argument("-b", "--blocksize", help="Cache blocksize in bytes", type=i
 parser.add_argument("-p", "--policy", help="Replacement policy")
 
 args = parser.parse_args()
-if args.make:
-	if args.nocache:
-		subprocess.check_call(["make", "DEFINES=-Dnocache"])
-		for p in progs:
-			with open("traces/ref_"+p+".log", "w") as output:
-				subprocess.call(["./catapult.sim", "benchmarks/build/"+p], stdout=output)
-			
-	subprocess.check_call(["make"])
-	# ~ for p in progs:
-		# ~ with open("traces/cache_"+p+".log", "w") as output:
-			# ~ subprocess.call(["./catapult.sim", "benchmarks/build/"+p], stdout=output)
 
+N = 2**24
 assoc = 4
 sets = 8
-for p in progs:
+policy = "lru"
+updatepolicy = getattr(sys.modules["__main__"], policy)
+policyselect = noselect
+rcycles = list()
+ncycles = list()
+if args.nocache:
 	if args.make:
-		with open("traces/cache_"+p+".log", "w") as output:
-			subprocess.call(["./catapult.sim", "benchmarks/build/"+p], stdout=output)
-	
-	print("\nLoading cache for", p)
-	with open("traces/cache_"+p+".log", "r") as c:
-		current = "cache"
-		#make parsecache function...
-		cache = parsefile(c, p, True)
-	
-	print("\nLoading reference for", p)
-	with open("traces/ipath/ref_"+p+".log", "r") as r:
-		current = "ref"
-		ref = parsefile(r, p)	# ipath, dpath, imem, dmem, endmem
-	
-	assert ref[0] == cache[0]
-	assert ref[1] == cache[1]
-	assert ref[2] == cache[2]
-	assert ref[3] == cache[3]
-	assert ref[4] == cache[4]
-		
-	if args.nocache:
+		subprocess.check_call(["make", "DEFINES=-Dnocache"])
+	for p in progs:
+		if args.make:
+			with open("traces/nocache_"+p+".log", "w") as output:
+				subprocess.call(["./catapult.sim", "benchmarks/build/"+p], stdout=output)
+				
 		print("Loading uncached for", p)
 		with open("traces/nocache_"+p+".log", "r") as n:
 			current = "nocache"
 			nocache = parsefile(n, p)
+			ncycles.append(nocache[5])
+			
+		print("\nLoading reference for", p)
+		with open("traces/ipath/ref_"+p+".log", "r") as r:
+			ref = parsefile(r, p)	# ipath, dpath, imem, dmem, endmem, cycles
+			rcycles.append(ref[5])
 		
-		assert ref[0] == nocache[0]
-		assert ref[1] == nocache[1]
-		assert ref[2] == nocache[2]	
+		assert ref[0] == nocache[0], "{} : ipath in {} is different".format(p, current)
+		assert ref[1] == nocache[1], "{} : dpath in {} is different".format(p, current)
+		assert ref[2] == nocache[2], "{} : imem in {} is different".format(p, current)
+		assert ref[3] == nocache[3], "{} : dmem in {} is different".format(p, current)
+		assert ref[4] == nocache[4], "{} : endmem in {} is different".format(p, current)
+
+rcycles = list()
+cycles = list()
+if args.make:
+	subprocess.check_call(["make"])
+for p in progs:
+	if args.make:
+		with open("traces/cache_"+p+".log", "w") as output:
+			subprocess.call(["./catapult.sim", "benchmarks/build/"+p], stdout=output)
+			
+	print("\nLoading reference for", p)
+	with open("traces/ipath/ref_"+p+".log", "r") as r:
+		ref = parsefile(r, p)	# ipath, dpath, imem, dmem, endmem
+		ripath = ref[0]
+		rdpath = ref[1]
+		rcycles.append(ref[5])
+		
+	print("\nLoading cache for", p)
+	with open("traces/cache_"+p+".log", "r") as c:
+		current = "cache"
+		cache = parsefile(c, p, True)
+		cycles.append(cache[5])
+
+	assert ref[0] == cache[0], "{} : ipath in {} is different".format(p, current)
+	assert ref[1] == cache[1], "{} : dpath in {} is different".format(p, current)
+	assert ref[2] == cache[2], "{} : imem in {} is different".format(p, current)
+	assert ref[3] == cache[3], "{} : dmem in {} is different".format(p, current)
+	assert ref[4] == cache[4], "{} : endmem in {} is different".format(p, current)
+		
 	
 	
-	
-	# ~ for idx, pc in enumerate(ipath):
-		# ~ assert pc == pcs[idx], "In uncached, instruction path incorrect on {}th instruction : expected @{:06x} got @{:06x}".format(idx, pc, pcs[idx])
-	# ~ assert cachemem == mem, "Memory simulations are different in {}".format(p)
-	# ~ assert cacheendmem == endmem, "End memory are different in {}".format(p)
