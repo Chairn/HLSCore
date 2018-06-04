@@ -326,14 +326,28 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
 #endif
            )
 {
+    /*if(dcacheenable && datavalid)   // we can avoid storing control if we hit same set multiple times in a row
+    {
+        if(dctrl.currentset != getSet(address))
+        {
+            dctrl.state == DState::StoreControl;
+        }
+        else
+        {
+            dctrl.state == DState::Idle;
+        }
+    }
+    else if(!dcacheenable && datavalid)
+    {
+        dctrl.state == DState::StoreControl;
+    }*/
+
     switch(dctrl.state)
     {
     case DState::Idle:
         if(dcacheenable)
         {
-            //debug("%5d  ", cycles);
-            //debug("%5d   cacheenable     ", cycles);
-            dctrl.currentset = getSet(address);//(address & setmask) >> setshift;
+            dctrl.currentset = getSet(address);
             dctrl.i = getOffset(address);
             #pragma hls_unroll yes
             loaddset:for(int i = 0; i < Associativity; ++i)
@@ -349,63 +363,26 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
 
             if(find(dctrl, address))
             {
-                /*debug("%2d %2d    ", dctrl.currentset.to_int(), dctrl.currentway.to_int());
-                debug("valid data   ");*/
                 if(writeenable)
                 {
-                    dctrl.valuetowrite = dctrl.setctrl.data[dctrl.currentway];//data[dctrl.currentset][dctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
+                    dctrl.valuetowrite = dctrl.setctrl.data[dctrl.currentway];
                     formatwrite(address, datasize, dctrl.valuetowrite, writevalue);
                     dctrl.workAddress = address;
                     dctrl.setctrl.dirty[dctrl.currentway] = true;
-                    /*simul(
-                    switch(datasize)
-                    {
-                    case 0:
-                        debug("W:      %02x   ", writevalue);
-                        break;
-                    case 1:
-                        debug("W:    %06x   ", writevalue);
-                        break;
-                    case 2:
-                    case 3:
-                        debug("W:%08x   ", writevalue);
-                        break;
-                    }
-                    );*/
 
                     dctrl.state = DState::StoreData;
-                    //debug("d @%06x (%06x) W %08x    S:%d  %5s   %d  %d\n", address.to_int(), address.to_int() >> 2, writevalue, datasize.to_int(), " ", dctrl.currentset.to_int(), dctrl.currentway.to_int());
                 }
                 else
-                {                                                //address.slc<ac::log2_ceil<Blocksize>::val>(2) // doesnt work, why?
-                    ac_int<32, false> r = dctrl.setctrl.data[dctrl.currentway];//data[dctrl.currentset][dctrl.currentway][(address & (ac_int<32, true>)blockmask) >> 2];
-                    //debug("%08x (%08x)", r.to_int(), data[dctrl.currentset][dctrl.currentway][dctrl.i]);
+                {
+                    ac_int<32, false> r = dctrl.setctrl.data[dctrl.currentway];
                     formatread(address, datasize, signenable, r);
 
                     read = r;
-                    /*simul(
-                    switch(datasize)
-                    {
-                    case 0:
-                        debug("R:      %02x   ", read);
-                        break;
-                    case 1:
-                        debug("R:    %06x   ", read);
-                        break;
-                    case 2:
-                    case 3:
-                        debug("R:%08x   ", read);
-                        break;
-                    }
-                    );*/
 
                     dctrl.state = DState::StoreControl;
-                    //debug("d @%06x (%06x) R %08x    S:%d  %5s   %d  %d\n", address.to_int(), address.to_int() >> 2, read, datasize.to_int(), 1?"true":"false", dctrl.currentset.to_int(), dctrl.currentway.to_int());
                 }
+                update_policy(dctrl);
                 datavalid = true;
-
-                /*debug("@%06x    ", address.to_int());
-                debug("(@%06x)\n", address.to_int() >> 2);*/
             }
             else    // not found or invalid
             {
@@ -415,13 +392,12 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
                 {
                     dctrl.state = DState::FirstWriteBack;
                     dctrl.i = 0;
-                    dctrl.workAddress = 0;//(dctrl.setctrl.tag[dctrl.currentway] << tagshift) | (dctrl.currentset << setshift);
+                    dctrl.workAddress = 0;
                     setTag(dctrl.workAddress, dctrl.setctrl.tag[dctrl.currentway]);
                     setSet(dctrl.workAddress, dctrl.currentset);
-                    //dctrl.valuetowrite = dctrl.setctrl.data[dctrl.currentway];
+                    //dctrl.valuetowrite = dctrl.setctrl.data[dctrl.currentway];    // only if same offset than requested address
                     datavalid = false;
                     cachedebug("starting writeback from %d %d from %06x to %06x\n", dctrl.currentset.to_int(), dctrl.currentway.to_int(), dctrl.workAddress.to_int() >> 2, (dctrl.workAddress.to_int() >> 2) + Blocksize-1);
-                    //debug("%08x \n", dctrl.valuetowrite.to_int());
                 }
                 else
                 {
@@ -441,7 +417,6 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
                     {
                         formatwrite(address, datasize, dctrl.valuetowrite, writevalue);
                         dctrl.setctrl.dirty[dctrl.currentway] = true;
-                        //debug("d @%06x (%06x) W %08x    S:%d  %5s   %d  %d\n", address.to_int(), address.to_int() >> 2, writevalue, datasize.to_int(), " ", dctrl.currentset.to_int(), dctrl.currentway.to_int());
                     }
                     else
                     {
@@ -449,15 +424,11 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
                         dctrl.setctrl.dirty[dctrl.currentway] = false;
                         formatread(address, datasize, signenable, r);
                         read = r;
-                        //debug("d @%06x (%06x) R %08x    S:%d  %5s   %d  %d\n", address.to_int(), address.to_int() >> 2, read, datasize.to_int(), 1?"true":"false", dctrl.currentset.to_int(), dctrl.currentway.to_int());
                     }
 
                     datavalid = true;
                 }
             }
-
-            if(dctrl.state != DState::WriteBack && dctrl.state != DState::FirstWriteBack)
-                update_policy(dctrl);
         }
         else
             datavalid = false;
@@ -487,7 +458,7 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
         #if Policy == FIFO || Policy == LRU
             dctrl.policy[dctrl.currentset] = dctrl.setctrl.policy;
         #endif
-        }                         //(dctrl.workAddress & (ac_int<32, true>)blockmask) >> 2
+        }
         data[dctrl.currentset][getOffset(dctrl.workAddress)][dctrl.currentway] = dctrl.valuetowrite;
 
         dctrl.state = DState::Idle;
@@ -501,12 +472,6 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
         setSet(bytead, dctrl.currentset);
         setOffset(bytead, dctrl.i);
 
-        simul(
-        for(unsigned int i(0); i < sizeof(int); ++i)
-        {
-            //debug("writing back %02x to %06x (%06x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, bytead.to_int() + i, (bytead.to_int()+i) >> 2);
-        });
-
         dctrl.valuetowrite = data[dctrl.currentset][dctrl.i][dctrl.currentway];
         dctrl.state = DState::WriteBack;
         datavalid = false;
@@ -519,12 +484,6 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
         setSet(bytead, dctrl.currentset);
         setOffset(bytead, dctrl.i);
         dmem[bytead >> 2] = dctrl.valuetowrite;
-
-        simul(
-        for(unsigned int i(0); i < sizeof(int); ++i)
-        {
-            //debug("writing back %02x to %06x (%06x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, bytead.to_int() + i, (bytead.to_int()+i) >> 2);
-        });
 
         if(++dctrl.i)
             dctrl.valuetowrite = data[dctrl.currentset][dctrl.i][dctrl.currentway];
@@ -540,7 +499,6 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
     }
     case DState::Fetch:
         data[dctrl.currentset][dctrl.i][dctrl.currentway] = dctrl.valuetowrite;
-        datavalid = false;
 
         if(++dctrl.i != getOffset(dctrl.workAddress))
         {
@@ -549,20 +507,17 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
             setSet(bytead, dctrl.currentset);
             setOffset(bytead, dctrl.i);
 
-            simul(
-            for(unsigned int i(0); i < sizeof(int); ++i)
-            {
-                //debug("fetching %02x from %06x (%06x)\n", (dmem[bytead >> 2] >> (i*8))&0xFF, (bytead.to_int()) + i, bytead.to_int() >> 2);
-            });
-
             dctrl.valuetowrite = dmem[bytead >> 2];
         }
         else
         {
             dctrl.state = DState::StoreControl;
             dctrl.setctrl.valid[dctrl.currentway] = true;
+            update_policy(dctrl);
             //debug("end of fetch to %d %d\n", dctrl.currentset.to_int(), dctrl.currentway.to_int());
         }
+
+        datavalid = false;
         break;
     default:
         datavalid = false;
