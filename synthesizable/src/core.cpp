@@ -825,7 +825,7 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     static DCtoEx dctoEx = {0,0x13,0,0,0,0,0,0,0x13,0}; // opCode = 0x13
     static FtoDC ftoDC = {0,0x13};
 
-    static ac_int<32, true> REG[32] = {0,0,0xf00000,0,0,0,0,0,  //0xf00000 is stack address and so is the highest reachable address
+    static ac_int<32, true> REG[32] = {0,0,0xf0000,0,0,0,0,0,  //0xf00000 is stack address and so is the highest reachable address
                                        0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0,0}; // Register file
@@ -870,9 +870,6 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
 #ifndef __SYNTHESIS__
     static unsigned int numins = 0;
 #endif
-
-    if(cycles == 1)
-        init = true;
 
     doWB(REG, memtoWB, wb_bubble, early_exit
      #ifndef __SYNTHESIS__
@@ -920,16 +917,16 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     }
 
 
+    simul(
     if(early_exit)
     {
         exit = true;
-     simul(
+
         //cache write back for simulation
         for(unsigned int i  = 0; i < Sets; ++i)
             for(unsigned int j = 0; j < Associativity; ++j)
                 if(dctrl.dirty[i][j] && dctrl.valid[i][j])
                     for(unsigned int k = 0; k < Blocksize; ++k)
                         dm[(dctrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2)) | k] = ddata[i][k][j];
-    )
-    }
+    })
 }

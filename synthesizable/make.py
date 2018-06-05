@@ -130,7 +130,7 @@ def parsefile(fichier, prog, cache=False):
 	imem, dmem, ibound, dbound, i = readpreambule(fichier, prog)
 	
 	reg = [0] * 32
-	reg[2] = 0x00f00000
+	reg[2] = 0x000F0000
 	global ipath, dpath
 	ipath = list()	
 	ipath.append( (0,0,0) )			# pc, registre modifié, nouvelle valeur

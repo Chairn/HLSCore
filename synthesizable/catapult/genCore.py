@@ -55,7 +55,7 @@ PINMAPS {{
 
 }}"""
 
-genCore = """project set -incr_directory {sets}x{ctrlwidth}cachedcore
+genCore = """project set -incr_directory {sets}x{ctrlwidth}cacheicore
 solution options set Project/ProjectNamePrefix SimpleCore
 solution new -state initial
 solution options set /Input/CompilerFlags {{-D __CATAPULT__=1}}
@@ -66,6 +66,7 @@ solution file add ../src/reformeddm_sim.cpp -type C++
 solution file add ../src/cache.cpp -type C++
 solution file add ../src/syscall.cpp -type C++
 solution file add ../src/elfFile.cpp -type C++
+solution file add ../src/portability.cpp -type C++
 go new
 solution file set ../src/core.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
 //solution file set ../src/cache.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
@@ -119,23 +120,39 @@ go assembly
 directive set /doStep/core/REG:rsc -MAP_TO_MODULE {{[Register]}}
 directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
 directive set /doStep/core -CLOCK_OVERHEAD 0.0
-directive set /doStep/core/cachedata:rsc -INTERLEAVE 4
-directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
-directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
-directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
-directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
-directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
-directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
-directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
+directive set /doStep/core/idata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/idata:rsc -INTERLEAVE {associativity}
+directive set /doStep/core/ictrl.tag:rsc -PACKING_MODE sidebyside
+directive set /doStep/core/ictrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/ictrl.tag -WORD_WIDTH {tagbits} 
+directive set /doStep/core/ictrl.valid -RESOURCE ictrl.tag:rsc
+directive set /doStep/core/ictrl.valid -WORD_WIDTH {associativity}
+directive set /doStep/core/ictrl.policy -RESOURCE ictrl.tag:rsc
 
 go architect
-cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
+cycle add /doStep/core/core:rlp/main/icache:case-0:if:read_mem(idata:rsc(0)(0).@) -from /doStep/core/core:rlp/main/loadiset:read_mem(ictrl.tag:rsc.@) -equal 0
 go schedule
 go extract
-project save {sets}x{ctrlwidth}cachedcore.ccs
+project save {sets}x{ctrlwidth}cacheicore.ccs
+
 """
+# ~ directive set /doStep/core/cachedata:rsc -INTERLEAVE {associativity}
+# ~ directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+# ~ directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
+# ~ directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+# ~ directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
+# ~ directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
+# ~ directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
+# ~ directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
+# ~ directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
+# ~ directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
+
+# ~ go architect
+# ~ cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
+# ~ go schedule
+# ~ go extract
+# ~ project save {sets}x{ctrlwidth}cachedcore.ccs
+
 
 exploreCore = """go new
 solution new

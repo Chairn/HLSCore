@@ -176,12 +176,6 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
 #endif
            )
 {
-    if(address == 0x100b4)
-        debug("\n");
-
-    if(cycles == 276)
-        debug("\n");
-
     if(ictrl.state != IState::Fetch && ictrl.currentset != getSet(address))  // different way but same set keeps same control, except for data......
     {
         ictrl.state = IState::StoreControl;
@@ -249,6 +243,7 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
             debug("StoreControl for %d %d  %06x to %06x\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(),
                         (ictrl.setctrl.tag[ictrl.currentway].to_int() << tagshift) | (ictrl.currentset.to_int() << setshift),
                         ((ictrl.setctrl.tag[ictrl.currentway].to_int() << tagshift) | (ictrl.currentset.to_int() << setshift))+Blocksize*4-1);
+            #pragma hls_unroll yes
             storeicontrol:for(int i = 0; i < Associativity; ++i)
             {
                 ictrl.tag[ictrl.currentset][i] = ictrl.setctrl.tag[i];

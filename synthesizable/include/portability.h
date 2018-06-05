@@ -45,10 +45,11 @@
 #define simul(...)
 #undef assert
 #define assert(a)
+#define coredebug(...)
 #endif
 
 #define DRAM_WIDTH  32
-#define DRAM_SIZE   (1 << 24)
+#define DRAM_SIZE   (1 << 20)
 
 #define N           DRAM_SIZE
 
