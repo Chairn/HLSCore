@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import subprocess, os, sys, argparse
+from time import time
 
 class Boundaries:
 	"""Class to represents discontinuous set.
@@ -402,7 +403,8 @@ for p in progs:
 		current = "cache"
 		try:
 			cipath, cdpath, cimem, cdmem, cendmem, ccycles = parsefile(c, p, True)
-		except:
+		except BaseException as e:
+			print(str(type(e)).split("'")[1], ":", e)
 			cipath = ipath
 			cdpath = dpath
 			
@@ -412,32 +414,35 @@ for p in progs:
 		else:
 			cycles.append(ccycles)
 	
-	
-	
-	for i, el in enumerate(ripath):	# pc, registre modifié, nouvelle valeur
-		assert el == cipath[i], "{} : ipath in {} is different after {} instructions, expected "\
-		"(@{:06x} {} {:08x}) got (@{:06x} {} {:08x})".format(p, current, i, *(el+cipath[i]))
 
-	for i, el in enumerate(rdpath):	# address, valeur, (0:read, 1:write), datasize, sign extension
-		assert el == cdpath[i], "{} : dpath in {} is different after {} memory access, expected "\
+	if ripath != cipath:				# != and == operator are much more faster than a loop
+		# if different, then look which elements are different
+		for i, el in enumerate(ripath):	# pc, registre modifié, nouvelle valeur
+			assert el == cipath[i], "{} : ipath in {} is different after {} instructions, expected "\
+			"(@{:06x} {} {:08x}) got (@{:06x} {} {:08x})".format(p, current, i, *(el+cipath[i]))
+	if rdpath != cdpath:
+		for i, el in enumerate(rdpath):	# address, valeur, (0:read, 1:write), datasize, sign extension
+			assert el == cdpath[i], "{} : dpath in {} is different after {} memory access, expected "\
 		"({}{} @{:06x} {:02x} {}) got ({}{} @{:06x} {:02x} {})".format(p, current, i, el[2], el[3], el[0],\
 		el[1], el[4], cdpath[i][2], cdpath[i][3], cdpath[i][0], cdpath[i][1], cdpath[i][4])
-		
-	for i, el in enumerate(rimem):
-		assert el == cimem[i], "{} : imem in {} is different @{:06x}, expected "\
+	
+	if rimem != cimem:
+		for i, el in enumerate(rimem):
+			assert el == cimem[i], "{} : imem in {} is different @{:06x}, expected "\
 		"{:02x} got {:02x}".format(p, current, i, el, cimem[i])
 		
-	for i, el in enumerate(rdmem):
-		assert el == cdmem[i], "{} : dmem in {} is different @{:06x}, expected "\
+	if rdmem != cdmem:
+		for i, el in enumerate(rdmem):
+			assert el == cdmem[i], "{} : dmem in {} is different @{:06x}, expected "\
 		"({:02x}, {}) got ({:02x}, {})".format(p, current, i, el[0], el[1], cdmem[i][0], cdmem[i][1])
 	
-	addresses = rendmem.keys() & cendmem.keys()
-	assert len(addresses) == len(rendmem) and len(addresses) == len(cendmem)
-	for ad in addresses:
-		assert rendmem[ad] == cendmem[ad], "{} : endmem in {} is different @{:06x}"\
-		", expected {:02x} got {:x02}".format(p, current, ad, rendmem[ad], cendmem[ad])
-	
-	
+	if rendmem != cendmem:
+		addresses = rendmem.keys() & cendmem.keys()
+		assert len(addresses) == len(rendmem) and len(addresses) == len(cendmem)
+		for ad in addresses:
+			assert rendmem[ad] == cendmem[ad], "{} : endmem in {} is different @{:06x}"\
+			", expected {:02x} got {:x02}".format(p, current, ad, rendmem[ad], cendmem[ad])
+
 	
 	
 	

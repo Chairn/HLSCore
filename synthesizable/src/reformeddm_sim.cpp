@@ -156,7 +156,7 @@ CCS_MAIN(int argc, char** argv)
                 counter++;
                 sim.setDataMemory(oneSection->address + byteNumber, sectionContent[byteNumber]);
             }
-            debug("filling data from %06x to %06x\n", oneSection->address, oneSection->address + oneSection->size -1);
+            coredebug("filling data from %06x to %06x\n", oneSection->address, oneSection->address + oneSection->size -1);
         }
 
         if (!oneSection->getName().compare(".text"))
@@ -166,7 +166,7 @@ CCS_MAIN(int argc, char** argv)
             {
                 sim.setInstructionMemory((oneSection->address + byteNumber) /*& 0x0FFFF*/, sectionContent[byteNumber]);
             }
-            debug("filling instruction from %06x to %06x\n", oneSection->address, oneSection->address + oneSection->size -1);
+            coredebug("filling instruction from %06x to %06x\n", oneSection->address, oneSection->address + oneSection->size -1);
         }
     }
 
@@ -223,13 +223,13 @@ CCS_MAIN(int argc, char** argv)
         im[i] = sim.getInstructionMemory()[i];
     }
 
-    debug("instruction memory :\n");
+    coredebug("instruction memory :\n");
     for(int i = 0; i < N; i++)
     {
         if(im[i])
             printf("%06x : %08x (%d)\n", 4*i, im[i], im[i]);
     }
-    debug("data memory :\n");
+    coredebug("data memory :\n");
     for(int i = 0; i < N; i++)
     {
         for(int j(0); j < 4; ++j)
@@ -240,7 +240,7 @@ CCS_MAIN(int argc, char** argv)
             }
         }
     }
-    debug("end of preambule\n");
+    coredebug("end of preambule\n");
 
     uint64_t cycles = 1;
     bool exit = false;
@@ -260,7 +260,7 @@ CCS_MAIN(int argc, char** argv)
                 )
             break;
     }
-    debug("Successfully executed all instructions in %d cycles\n", cycles);
+    coredebug("Successfully executed all instructions in %d cycles\n", cycles);
 
     std::cout << "memory :" <<std::endl;
     for(int i = 0; i < N; i++)

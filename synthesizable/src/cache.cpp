@@ -1,7 +1,5 @@
 #include "cache.h"
 
-#define cachedebug(...)     printf(__VA_ARGS__)
-
 bool find(ICacheControl& ictrl, ac_int<32, false> address)
 {
     bool found = false;
@@ -178,27 +176,16 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
 #endif
            )
 {
-#ifndef __SYNTHESIS__
-    unsigned int cacheaddress[Sets][Associativity];
-
-    for(int i(0); i < Sets; ++i)
-    {
-        for(int j(0); j < Associativity; ++j)
-        {
-            cacheaddress[i][j] = ((ictrl.tag[i][j] << (tagshift-2)) | (i << (setshift-2))) << 2;
-        }
-    }
-#endif
     if(address == 0x100b4)
         debug("\n");
 
     if(cycles == 276)
         debug("\n");
 
-    if(ictrl.state != IState::Fetch && ictrl.currentset != getSet(address))  // different way but same set keeps same control
+    if(ictrl.state != IState::Fetch && ictrl.currentset != getSet(address))  // different way but same set keeps same control, except for data......
     {
         ictrl.state = IState::StoreControl;
-        debug("address %06x storecontrol\n", cacheaddress[ictrl.currentset][ictrl.currentway]);
+        debug("address %06x storecontrol\n", (ictrl.setctrl.tag[ictrl.currentway].to_int() << tagshift) | (ictrl.currentset.to_int() << setshift));
     }
 
     switch(ictrl.state)
@@ -208,7 +195,7 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
             ictrl.currentset = getSet(address);
             ictrl.i = getOffset(address);
 
-            if(!ictrl.ctrlLoaded)
+            //if(!ictrl.ctrlLoaded)
             {
                 #pragma hls_unroll yes
                 loadiset:for(int i = 0; i < Associativity; ++i)
@@ -233,30 +220,18 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
             }
             else    // not found or invalid
             {
-                unsigned int tags[Associativity];
-                for(int j(0); j < Associativity; ++j)
-                {
-                    tags[j] = ((ictrl.setctrl.tag[j] << (tagshift-2)) | (ictrl.currentset << (setshift-2))) << 2;
-                }
                 select(ictrl);
-                debug("cim  @%06x   not found or invalid   ", address.to_int());
+                coredebug("cim  @%06x   not found or invalid   ", address.to_int());
                 ictrl.setctrl.tag[ictrl.currentway] = getTag(address);
-                for(int i(0); i < Sets; ++i)
-                {
-                    if(i == ictrl.currentset)
-                        for(int j(0); j < Associativity; ++j)
-                        {
-                            cacheaddress[i][j] = ((ictrl.setctrl.tag[j] << (tagshift-2)) | (i << (setshift-2))) << 2;
-                        }
-                }
+
                 ictrl.state = IState::Fetch;
                 ictrl.setctrl.valid[ictrl.currentway] = false;
                 ictrl.i = getOffset(address);
                 ac_int<32, false> wordad;
                 wordad.set_slc(0, address.slc<30>(2));
                 wordad.set_slc(30, (ac_int<2, false>)0);
-                debug("starting fetching to %d %d from %06x to %06x (%06x to %06x)\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(), (wordad.to_int() << 2)&(tagmask+setmask),
-                      (((int)(wordad.to_int()+Blocksize) << 2)&(tagmask+setmask))-1, (address >> 2).to_int() & (~(blockmask >> 2)), (((address >> 2).to_int() + Blocksize) & (~(blockmask >> 2)))-1 );
+                coredebug("starting fetching to %d %d from %06x to %06x (%06x to %06x)\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(), (wordad.to_int() << 2)&(tagmask+setmask),
+                      (((int)(wordad.to_int()+Blocksize) << 2)&(tagmask+setmask))-1, (address >> 2).to_int() & (~(blockmask >> 2)), (((address >> 2).to_int() + Blocksize) & (~(blockmask >> 2)))-1);
                 ictrl.valuetowrite = imem[wordad];
                 // critical word first
                 instruction = ictrl.valuetowrite;
@@ -271,8 +246,9 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
         #pragma hls_unroll yes
         if(ictrl.ctrlLoaded)
         {
-            cachedebug("StoreControl for %d %d  %06x to %06x\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(),
-                       cacheaddress[ictrl.currentset][ictrl.currentway], cacheaddress[ictrl.currentset][ictrl.currentway]+Blocksize*4-1);
+            debug("StoreControl for %d %d  %06x to %06x\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(),
+                        (ictrl.setctrl.tag[ictrl.currentway].to_int() << tagshift) | (ictrl.currentset.to_int() << setshift),
+                        ((ictrl.setctrl.tag[ictrl.currentway].to_int() << tagshift) | (ictrl.currentset.to_int() << setshift))+Blocksize*4-1);
             storeicontrol:for(int i = 0; i < Associativity; ++i)
             {
                 ictrl.tag[ictrl.currentset][i] = ictrl.setctrl.tag[i];
@@ -280,8 +256,12 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
             #if Policy == FIFO || Policy == LRU
                 ictrl.policy[ictrl.currentset] = ictrl.setctrl.policy;
             #endif
-                cachedebug("tag : %04x      valid : %s\n", ictrl.setctrl.tag[i] << tagshift, ictrl.setctrl.valid[i]?"true":"false");
+                debug("tag : %6x      valid : %s\n", (ictrl.setctrl.tag[i].to_int() << tagshift) | (ictrl.currentset.to_int() << setshift), ictrl.setctrl.valid[i]?"true":"false");
             }
+        }
+        else
+        {
+            debug("StoreControl but control not loaded\n");
         }
 
         ictrl.state = IState::Idle;
@@ -292,7 +272,6 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
         break;
     case IState::Fetch:
         data[ictrl.currentset][ictrl.i][ictrl.currentway] = ictrl.valuetowrite;
-        insvalid = false;
 
         if(++ictrl.i != getOffset(ictrl.workAddress))
         {
@@ -309,22 +288,11 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
         }
         else
         {
-            ictrl.state = IState::StoreControl;
+            ictrl.state = IState::Idle;
             ictrl.setctrl.valid[ictrl.currentway] = true;
-            ictrl.ctrlLoaded = false;
-
-            /*cachedebug("StoreControl for %d %d  %06x to %06x\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(),
-                       cacheaddress[ictrl.currentset][ictrl.currentway], cacheaddress[ictrl.currentset][ictrl.currentway]+Blocksize*4-1);
-            storeinfetch:for(int i = 0; i < Associativity; ++i)
-            {
-                ictrl.tag[ictrl.currentset][i] = ictrl.setctrl.tag[i];
-                ictrl.valid[ictrl.currentset][i] = ictrl.setctrl.valid[i];
-            #if Policy == FIFO || Policy == LRU
-                ictrl.policy[ictrl.currentset] = ictrl.setctrl.policy;
-            #endif
-                cachedebug("tag : %04x      valid : %s\n", ictrl.setctrl.tag[i] << tagshift, ictrl.setctrl.valid[i]?"true":"false");
-            }*/
-
+            ictrl.ctrlLoaded = true;
+            //ictrl.currentset = getSet(address);  //use workaddress?
+            //ictrl.workAddress = address;
             insvalid = false;
         }
         break;
@@ -337,7 +305,7 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
 
     simul(if(insvalid)
     {
-        debug("i    @%06x   %08x\n", cachepc.to_int(), instruction);
+        coredebug("i    @%06x   %08x\n", cachepc.to_int(), instruction);
     })
 
 }
@@ -411,7 +379,7 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
             else    // not found or invalid
             {
                 select(dctrl);
-                cachedebug("cdm  @%06x   not found or invalid   ", address.to_int());
+                debug("cdm  @%06x   not found or invalid   ", address.to_int());
                 if(dctrl.setctrl.dirty[dctrl.currentway] && dctrl.setctrl.valid[dctrl.currentway])
                 {
                     dctrl.state = DState::FirstWriteBack;
@@ -421,7 +389,7 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
                     setSet(dctrl.workAddress, dctrl.currentset);
                     //dctrl.valuetowrite = dctrl.setctrl.data[dctrl.currentway];    // only if same offset than requested address
                     datavalid = false;
-                    cachedebug("starting writeback from %d %d from %06x to %06x\n", dctrl.currentset.to_int(), dctrl.currentway.to_int(), dctrl.workAddress.to_int() >> 2, (dctrl.workAddress.to_int() >> 2) + Blocksize-1);
+                    coredebug("starting writeback from %d %d from %06x to %06x\n", dctrl.currentset.to_int(), dctrl.currentway.to_int(), dctrl.workAddress.to_int() >> 2, (dctrl.workAddress.to_int() >> 2) + Blocksize-1);
                 }
                 else
                 {
@@ -433,7 +401,7 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
                     ac_int<32, false> wordad;
                     wordad.set_slc(0, address.slc<30>(2));
                     wordad.set_slc(30, (ac_int<2, false>)0);
-                    cachedebug("starting fetching to %d %d for %s from %06x to %06x (%06x to %06x)\n", dctrl.currentset.to_int(), dctrl.currentway.to_int(), writeenable?"W":"R", (wordad.to_int() << 2)&(tagmask+setmask),
+                    coredebug("starting fetching to %d %d for %s from %06x to %06x (%06x to %06x)\n", dctrl.currentset.to_int(), dctrl.currentway.to_int(), writeenable?"W":"R", (wordad.to_int() << 2)&(tagmask+setmask),
                           (((int)(wordad.to_int()+Blocksize) << 2)&(tagmask+setmask))-1, (address >> 2).to_int() & (~(blockmask >> 2)), (((address >> 2).to_int() + Blocksize) & (~(blockmask >> 2)))-1 );
                     dctrl.valuetowrite = dmem[wordad];
                     // critical word first
