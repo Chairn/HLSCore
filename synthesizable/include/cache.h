@@ -60,8 +60,7 @@ enum {
 
 namespace IState {
 enum IState {
-    Start        = 0,
-    Idle            ,
+    Idle         = 0,
     StoreControl    ,
     Fetch           ,
     IStates
@@ -106,6 +105,7 @@ struct ICacheControl
     ac_int<32, false> workAddress;
     bool valid[Sets][Associativity];
     IState::IState state;
+    bool ctrlLoaded;
     ac_int<ac::log2_ceil<Blocksize>::val, false> i;
     ac_int<32, false> valuetowrite;
     ac_int<ac::log2_ceil<Sets>::val, false> currentset;

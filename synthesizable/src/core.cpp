@@ -44,7 +44,7 @@ void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, tru
     ac_int<32, false> memory_val = memory[location];
     formatwrite(address, op, memory_val, value);
     // data                                     size-1        @address         what was there before  what we want to write  what is actually written
-    debug("dW%d  @%06x   %08x   %08x   %08x\n", op.to_int(), wrapped_address.to_int(), memory[location], value.to_int(), memory_val.to_int());
+    coredebug("dW%d  @%06x   %08x   %08x   %08x\n", op.to_int(), wrapped_address.to_int(), memory[location], value.to_int(), memory_val.to_int());
     memory[location] = memory_val;
 #else
     memory[location] = value;
@@ -105,7 +105,7 @@ ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac
     })*/
     formatread(address, op, sign, mem_read);
     // data                                   size-1        @address               what is in memory   what is actually read    sign extension
-    debug("dR%d  @%06x   %08x   %08x   %s\n", op.to_int(), wrapped_address.to_int(), memory[location], mem_read.to_int(), sign?"true":"false");
+    coredebug("dR%d  @%06x   %08x   %08x   %s\n", op.to_int(), wrapped_address.to_int(), memory[location], mem_read.to_int(), sign?"true":"false");
     return mem_read;
 }
 
@@ -117,7 +117,7 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
     ac_int<32, false> next_pc;
     if(freeze_fetch)
     {
-        next_pc = pc;
+        next_pc = pc;               // read after load dependency, stall 1 cycle
     }
     else
     {
@@ -126,11 +126,11 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
     ac_int<32, false> jump_pc;
     if(mem_lock > 1)
     {
-        jump_pc = next_pc;
+        jump_pc = next_pc;          // this means that we already had a jump before, so prevent double jumping when 2 jumps or branch in a row
     }
     else
     {
-        jump_pc = extoMem.memValue;
+        jump_pc = extoMem.memValue; // forward the value from ex stage for jump & branch
     }
     bool control = 0;
     switch(extoMem.opCode)
@@ -149,40 +149,57 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
         break;
     }
 
-#if 0
+#ifndef nocache
     if(!freeze_fetch)
     {
-        if(control && mem_lock <= 1)
-        {
-            ftoDC.instruction = 0x13;  // insert bubble (0x13 is NOP instruction and corresponds to ADDI r0, r0, 0)
-            ftoDC.pc = 0;
-            pc = control ? jump_pc : next_pc;
-            coredebug("jumping%s& ", mem_lock > 1?" (memlock) ":" ");
-        }
-
         if(insvalid && cachepc == pc)
         {
             ftoDC.instruction = instruction;
             ftoDC.pc = pc;
-            pc = control ? jump_pc : next_pc;
+            if(control)
+            {
+                pc = jump_pc;
+                iaddress = pc;
+            }
+            else
+            {
+                iaddress = pc;
+                pc = next_pc;
+            }
+            debug("%06x\n", pc.to_int());
         }
         else
         {
+            static bool init = false;
             ftoDC.instruction = 0x13;  // insert bubble (0x13 is NOP instruction and corresponds to ADDI r0, r0, 0)
             ftoDC.pc = 0;
-        }
 
-        iaddress = pc;
-        coredebug("Requesting @%06x in fetch\n", pc.to_int());
+            if(!init)
+            {
+                iaddress = pc;
+                init = true;
+            }
+            else if(mem_lock > 1)
+            {
+                debug("Had a jump, not moving & ");
+            }
+            // if there's a jump at the same time of a miss, update to jump_pc
+            else if(control)
+            {
+                pc = jump_pc;
+                debug("Jumping & ");
+            }
+            iaddress = pc;
+            debug("Requesting @%06x\n", pc.to_int());
+        }
     }
-    else
+    else      // we cannot overwrite because it would not execute the frozen instruction
     {
-        pc = control ? jump_pc : next_pc;
-        iaddress = pc;
-        ftoDC.instruction = 0x13;
-        ftoDC.pc = 0;
-        debug("!!! Fetch frozen !!!\n");
+        ftoDC.instruction = ftoDC.instruction;
+        ftoDC.pc = ftoDC.pc;
+        debug("Fetch frozen, what to do?");
     }
+
     simul(if(ftoDC.pc)
     {
         coredebug("Ft   @%06x   %08x\n", ftoDC.pc.to_int(), ftoDC.instruction.to_int());
@@ -191,13 +208,18 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
     {
         coredebug("Ft   \n");
     })
-
 #else
     if(!freeze_fetch)
     {
         ftoDC.instruction = ins_memory[pc/4];
         ftoDC.pc = pc;
         //debug("i @%06x (%06x)   %08x    S:3\n", pc.to_int(), pc.to_int()/4, ins_memory[pc/4]);
+    }
+    else      // we cannot overwrite because it would not execute the frozen instruction
+    {
+        ftoDC.instruction = ftoDC.instruction;
+        ftoDC.pc = ftoDC.pc;
+        debug("Fetch frozen, what to do?");
     }
     simul(if(ftoDC.pc)
     {
@@ -208,8 +230,6 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
         coredebug("Ft   \n");
     })
     pc = control ? jump_pc : next_pc;
-    //debug("i @%06x (%06x)   %08x    %d\n", pc.to_int(), (pc/4).to_int(), ftoDC.instruction.to_int(), mem_lock > 1);
-
 #endif
 }
 
@@ -335,7 +355,7 @@ void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB,
         dctoEx.datab = (forward_rs2 && rs2 != 0) ? (forward_ex_or_mem_rs2 ? extoMem.result : memtoWB.result) : reg_rs2;
     }
 
-    // stall 1 cycle if RAW dependency? if load to one of the register we use?
+    // stall 1 cycle if load to one of the register we use, e.g lw a5, someaddress followed by any operation that use a5
     if(prev_opCode == RISCV_LD && (extoMem.dest == rs1 || (opcode != RISCV_LD && extoMem.dest == rs2)) && mem_lock < 2 && prev_pc != ftoDC.pc)
     {
         freeze_fetch = 1;
@@ -531,6 +551,7 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
         break;
     default:
         fprintf(stderr, "Error : Unknown operation in Ex stage : @%06x	%08x\n", extoMem.pc.to_int(), extoMem.instruction.to_int());
+        debug("Error : Unknown operation in Ex stage : @%06x	%08x\n", extoMem.pc.to_int(), extoMem.instruction.to_int());
         assert(false && "Unknown operation in Ex stage");
         break;
 #endif
@@ -663,7 +684,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     sign = 0;
                     break;
                 }
-#ifndef nocache
+#if 0//ndef nocache
                 address = memtoWB.result;// % N;
                 signenable = sign;
                 cacheenable = true;
@@ -689,7 +710,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     datasize = 0;
                     break;
                 }
-#ifndef nocache
+#if 0//ndef nocache
                 address = memtoWB.result;// % N;
                 signenable = false;
                 cacheenable = true;
@@ -717,7 +738,11 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
     })
 }
 
-void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& early_exit)
+void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& early_exit
+#ifndef __SYNTHESIS__
+    , unsigned int& numins
+#endif
+    )
 {
     if (memtoWB.WBena == 1 && memtoWB.dest != 0)
     {
@@ -726,23 +751,30 @@ void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& earl
 #ifndef __SYNTHESIS__
     if(memtoWB.sys_status == 1)
     {
-        debug("Exit system call received, Exiting...\n");
+        debug("\nExit system call received, Exiting...");
         early_exit = 1;
     }
     else if(memtoWB.sys_status == 2)
     {
-        debug("Unknown system call received, Exiting...\n");
+        debug("\nUnknown system call received, Exiting...");
         early_exit = 1;
     }
-#endif
-    simul(if(memtoWB.pc)
+
+    if(memtoWB.pc)
     {
-        coredebug("\nWB   @%06x   %08x\n", memtoWB.pc.to_int(), memtoWB.instruction.to_int());
+        static int lastpc = 0;
+        if(memtoWB.pc != lastpc)
+        {
+            ++numins;
+            lastpc = memtoWB.pc;
+        }
+        coredebug("\nWB   @%06x   %08x   (%d)\n", memtoWB.pc.to_int(), memtoWB.instruction.to_int(), numins);
     }
     else
     {
         coredebug("\nWB   \n");
-    })
+    }
+#endif
 }
 
 void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int dm[N], bool& exit
@@ -769,10 +801,6 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     (void)dirinit;
     static bool valinit = ac::init_array<AC_VAL_0>((bool*)dctrl.valid, Sets*Associativity);
     (void)valinit;
-    simul(if(cycles == 1)
-        for(int i(0); i < Sets*Associativity; ++i)
-            assert(dctrl.valid[i/Sets][i%Associativity] == 0);
-    )
 #if Policy == FIFO
     static bool dpolinit = ac::init_array<AC_VAL_DC>((ac_int<ac::log2_ceil<Associativity>::val, false>*)dctrl.policy, Sets);
     (void)dpolinit;
@@ -838,21 +866,30 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     static int readvalue = 0;
     static bool datavalid = false;
 
+
+#ifndef __SYNTHESIS__
+    static unsigned int numins = 0;
+#endif
+
     if(cycles == 1)
         init = true;
 
-    doWB(REG, memtoWB, wb_bubble, early_exit);
-    simul(debug("%d ", cycles);
+    doWB(REG, memtoWB, wb_bubble, early_exit
+     #ifndef __SYNTHESIS__
+         , numins
+     #endif
+         );
+    simul(coredebug("%d ", cycles);
     for(int i=0; i<32; i++)
     {
         if(REG[i])
-            debug("%d:%08x ", i, (int)REG[i]);
+            coredebug("%d:%08x ", i, (int)REG[i]);
     }
     )
-    debug("\n");
+    coredebug("\n");
 
     do_Mem(extoMem, memtoWB, mem_lock, mem_bubble, wb_bubble, cachelock,                // internal core control
-           daddress, datasize, signenable, dcacheenable, writeenable, writevalue,         // control & data to cache
+           daddress, datasize, signenable, dcacheenable, writeenable, writevalue,       // control & data to cache
            readvalue, datavalid, dm                                                     // data & acknowledgment from cache
        #ifndef __SYNTHESIS__
            , cycles

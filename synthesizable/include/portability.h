@@ -30,20 +30,15 @@
 #ifndef __SYNTHESIS__
 #include <cstdio>
 #include <stdint.h>
-#define debug(...)      printf(__VA_ARGS__)
+#if 1
+#define debug(...)      printf(__VA_ARGS__)     // generic debug, can be deactivated
+#else
+#define debug(...)
+#endif
 #define simul(...)      __VA_ARGS__
 
-#ifndef nocoredebug
-#define coredebug(...)  printf(__VA_ARGS__)
-#else
-#define coredebug(...)
-#endif
 
-#ifndef nocachedebug
-#define cachedebug(...) printf(__VA_ARGS__)
-#else
-#define cachedebug(...)
-#endif
+#define coredebug(...)  printf(__VA_ARGS__)     // mandatory debug
 
 #else
 #define debug(...)

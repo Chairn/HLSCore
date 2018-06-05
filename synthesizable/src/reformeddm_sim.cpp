@@ -251,9 +251,14 @@ CCS_MAIN(int argc, char** argv)
                           , cycles++
                   #endif
                           ));
-        if(cycles > (uint64_t)2e6)
-            //fprintf(stderr, "%lld\n", cycles);
-            break;//return 1;
+        if(cycles >
+        #ifndef nocache
+                (uint64_t)1e7
+        #else
+                (uint64_t)2e6
+        #endif
+                )
+            break;
     }
     debug("Successfully executed all instructions in %d cycles\n", cycles);
 

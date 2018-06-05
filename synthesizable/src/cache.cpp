@@ -1,5 +1,7 @@
 #include "cache.h"
 
+#define cachedebug(...)     printf(__VA_ARGS__)
+
 bool find(ICacheControl& ictrl, ac_int<32, false> address)
 {
     bool found = false;
@@ -176,7 +178,7 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
 #endif
            )
 {
-#ifdef Debug
+#ifndef __SYNTHESIS__
     unsigned int cacheaddress[Sets][Associativity];
 
     for(int i(0); i < Sets; ++i)
@@ -190,56 +192,63 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
     if(address == 0x100b4)
         debug("\n");
 
-    if(cycles == 373)
+    if(cycles == 276)
         debug("\n");
+
+    if(ictrl.state != IState::Fetch && ictrl.currentset != getSet(address))  // different way but same set keeps same control
+    {
+        ictrl.state = IState::StoreControl;
+        debug("address %06x storecontrol\n", cacheaddress[ictrl.currentset][ictrl.currentway]);
+    }
 
     switch(ictrl.state)
     {
-    case IState::Start:
-        insvalid = false;
-        ictrl.state = IState::Idle;
-        ictrl.currentset = getSet(address);
-        break;
     case IState::Idle:
-        if(ictrl.currentset != getSet(address))  // different way but same set keeps same control
         {
-            ictrl.state = IState::StoreControl;
-            debug("address %06x storecontrol\n", (int)address);
-        }
-        else
-        {
-            //debug("%5d  ", cycles);
-            //debug("%5d   cacheenable     ", cycles);
-
-            ictrl.currentset = getSet(address);//(address & setmask) >> setshift;
+            ictrl.currentset = getSet(address);
             ictrl.i = getOffset(address);
-            #pragma hls_unroll yes
-            loadiset:for(int i = 0; i < Associativity; ++i)
+
+            if(!ictrl.ctrlLoaded)
             {
-                ictrl.setctrl.data[i] = data[ictrl.currentset][ictrl.i][i];
-                ictrl.setctrl.tag[i] = ictrl.tag[ictrl.currentset][i];
-                ictrl.setctrl.valid[i] = ictrl.valid[ictrl.currentset][i];
-            #if Policy == FIFO || Policy == LRU
-                ictrl.setctrl.policy = ictrl.policy[ictrl.currentset];
-            #endif
+                #pragma hls_unroll yes
+                loadiset:for(int i = 0; i < Associativity; ++i)
+                {
+                    ictrl.setctrl.data[i] = data[ictrl.currentset][ictrl.i][i];
+                    ictrl.setctrl.tag[i] = ictrl.tag[ictrl.currentset][i];
+                    ictrl.setctrl.valid[i] = ictrl.valid[ictrl.currentset][i];
+                #if Policy == FIFO || Policy == LRU
+                    ictrl.setctrl.policy = ictrl.policy[ictrl.currentset];
+                #endif
+                }
             }
+
+            ictrl.workAddress = address;
+            ictrl.ctrlLoaded = true;
 
             if(find(ictrl, address))
             {
-                /*debug("%2d %2d    ", ictrl.currentset.to_int(), ictrl.currentway.to_int());
-                debug("valid data   ");*/
-
                 instruction = ictrl.setctrl.data[ictrl.currentway];
 
                 ictrl.state = IState::Idle;
-                //debug("i @%06x (%06x)   %08x    S:3  %5s   %d  %d\n", address.to_int(), address.to_int() >> 2, instruction, " ", ictrl.currentset.to_int(), ictrl.currentway.to_int());
             }
             else    // not found or invalid
             {
+                unsigned int tags[Associativity];
+                for(int j(0); j < Associativity; ++j)
+                {
+                    tags[j] = ((ictrl.setctrl.tag[j] << (tagshift-2)) | (ictrl.currentset << (setshift-2))) << 2;
+                }
                 select(ictrl);
                 debug("cim  @%06x   not found or invalid   ", address.to_int());
                 ictrl.setctrl.tag[ictrl.currentway] = getTag(address);
-                ictrl.workAddress = address;
+                for(int i(0); i < Sets; ++i)
+                {
+                    if(i == ictrl.currentset)
+                        for(int j(0); j < Associativity; ++j)
+                        {
+                            cacheaddress[i][j] = ((ictrl.setctrl.tag[j] << (tagshift-2)) | (i << (setshift-2))) << 2;
+                        }
+                }
                 ictrl.state = IState::Fetch;
                 ictrl.setctrl.valid[ictrl.currentway] = false;
                 ictrl.i = getOffset(address);
@@ -251,8 +260,6 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
                 ictrl.valuetowrite = imem[wordad];
                 // critical word first
                 instruction = ictrl.valuetowrite;
-
-                //debug("i @%06x (%06x)   %08x    S:3  %5s   %d  %d\n", address.to_int(), address.to_int() >> 2, instruction, " ", ictrl.currentset.to_int(), ictrl.currentway.to_int());
             }
 
             update_policy(ictrl);
@@ -262,17 +269,26 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
         break;
     case IState::StoreControl:
         #pragma hls_unroll yes
-        storeicontrol:for(int i = 0; i < Associativity; ++i)
+        if(ictrl.ctrlLoaded)
         {
-            ictrl.tag[ictrl.currentset][i] = ictrl.setctrl.tag[i];
-            ictrl.valid[ictrl.currentset][i] = ictrl.setctrl.valid[i];
-        #if Policy == FIFO || Policy == LRU
-            ictrl.policy[ictrl.currentset] = ictrl.setctrl.policy;
-        #endif
+            cachedebug("StoreControl for %d %d  %06x to %06x\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(),
+                       cacheaddress[ictrl.currentset][ictrl.currentway], cacheaddress[ictrl.currentset][ictrl.currentway]+Blocksize*4-1);
+            storeicontrol:for(int i = 0; i < Associativity; ++i)
+            {
+                ictrl.tag[ictrl.currentset][i] = ictrl.setctrl.tag[i];
+                ictrl.valid[ictrl.currentset][i] = ictrl.setctrl.valid[i];
+            #if Policy == FIFO || Policy == LRU
+                ictrl.policy[ictrl.currentset] = ictrl.setctrl.policy;
+            #endif
+                cachedebug("tag : %04x      valid : %s\n", ictrl.setctrl.tag[i] << tagshift, ictrl.setctrl.valid[i]?"true":"false");
+            }
         }
 
         ictrl.state = IState::Idle;
         ictrl.currentset = getSet(address);  //use workaddress?
+        ictrl.workAddress = address;
+        ictrl.ctrlLoaded = false;
+        insvalid = false;
         break;
     case IState::Fetch:
         data[ictrl.currentset][ictrl.i][ictrl.currentway] = ictrl.valuetowrite;
@@ -285,12 +301,6 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
             setSet(bytead, ictrl.currentset);
             setOffset(bytead, ictrl.i);
 
-            simul(
-            for(unsigned int i(0); i < sizeof(int); ++i)
-            {
-                //debug("fetching %02x from %06x (%06x)\n", (imem[bytead >> 2] >> (i*8))&0xFF, (bytead.to_int()) + i, bytead.to_int() >> 2);
-            });
-
             ictrl.valuetowrite = imem[bytead >> 2];
             instruction = ictrl.valuetowrite;
             cachepc = ictrl.workAddress;
@@ -301,19 +311,33 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
         {
             ictrl.state = IState::StoreControl;
             ictrl.setctrl.valid[ictrl.currentway] = true;
-            //debug("end of fetch to %d %d\n", ictrl.currentset.to_int(), ictrl.currentway.to_int());
+            ictrl.ctrlLoaded = false;
+
+            /*cachedebug("StoreControl for %d %d  %06x to %06x\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(),
+                       cacheaddress[ictrl.currentset][ictrl.currentway], cacheaddress[ictrl.currentset][ictrl.currentway]+Blocksize*4-1);
+            storeinfetch:for(int i = 0; i < Associativity; ++i)
+            {
+                ictrl.tag[ictrl.currentset][i] = ictrl.setctrl.tag[i];
+                ictrl.valid[ictrl.currentset][i] = ictrl.setctrl.valid[i];
+            #if Policy == FIFO || Policy == LRU
+                ictrl.policy[ictrl.currentset] = ictrl.setctrl.policy;
+            #endif
+                cachedebug("tag : %04x      valid : %s\n", ictrl.setctrl.tag[i] << tagshift, ictrl.setctrl.valid[i]?"true":"false");
+            }*/
+
             insvalid = false;
         }
         break;
     default:
         insvalid = false;
-        ictrl.state = IState::Start;
+        ictrl.state = IState::Idle;
+        ictrl.ctrlLoaded = false;
         break;
     }
 
     simul(if(insvalid)
     {
-        cachedebug("i    @%06x   %08x\n", cachepc.to_int(), instruction);
+        debug("i    @%06x   %08x\n", cachepc.to_int(), instruction);
     })
 
 }
@@ -528,10 +552,10 @@ void dcache(DCacheControl& dctrl, unsigned int dmem[N], unsigned int data[Sets][
     simul(if(datavalid)
     {
         if(writeenable)
-            cachedebug("dW%d  @%06x   %08x   %08x   %08x   %d %d\n", datasize.to_int(), address.to_int(), dctrl.state == DState::Fetch?dmem[address/4]:data[dctrl.currentset][dctrl.i][dctrl.currentway],
+            coredebug("dW%d  @%06x   %08x   %08x   %08x   %d %d\n", datasize.to_int(), address.to_int(), dctrl.state == DState::Fetch?dmem[address/4]:data[dctrl.currentset][dctrl.i][dctrl.currentway],
                                                                       writevalue, dctrl.valuetowrite.to_int(), dctrl.currentset.to_int(), dctrl.currentway.to_int());
         else
-            cachedebug("dR%d  @%06x   %08x   %08x   %5s   %d %d\n", datasize.to_int(), address.to_int(), dctrl.state == DState::Fetch?dmem[address/4]:data[dctrl.currentset][dctrl.i][dctrl.currentway],
+            coredebug("dR%d  @%06x   %08x   %08x   %5s   %d %d\n", datasize.to_int(), address.to_int(), dctrl.state == DState::Fetch?dmem[address/4]:data[dctrl.currentset][dctrl.i][dctrl.currentway],
                                                                     read, signenable?"true":"false", dctrl.currentset.to_int(), dctrl.currentway.to_int());
     })
 }
