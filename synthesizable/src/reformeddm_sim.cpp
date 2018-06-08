@@ -147,7 +147,7 @@ CCS_MAIN(int argc, char** argv)
     for (unsigned int sectionCounter = 0; sectionCounter<elfFile.sectionTable->size(); sectionCounter++)
     {
         ElfSection *oneSection = elfFile.sectionTable->at(sectionCounter);
-        if(oneSection->address != 0 && oneSection->getName().compare(".text"))
+        if(oneSection->address != 0 && strncmp(oneSection->getName().c_str(), ".text", 5))
         {
             //If the address is not null we place its content into memory
             unsigned char* sectionContent = oneSection->getSectionCode();
@@ -159,7 +159,7 @@ CCS_MAIN(int argc, char** argv)
             coredebug("filling data from %06x to %06x\n", oneSection->address, oneSection->address + oneSection->size -1);
         }
 
-        if (!oneSection->getName().compare(".text"))
+        if(!strncmp(oneSection->getName().c_str(), ".text", 5))
         {
             unsigned char* sectionContent = oneSection->getSectionCode();
             for (unsigned int byteNumber = 0; byteNumber<oneSection->size; byteNumber++)
@@ -176,7 +176,7 @@ CCS_MAIN(int argc, char** argv)
         const char* name = (const char*) &(elfFile.sectionTable->at(elfFile.indexOfSymbolNameSection)->getSectionCode()[symbol->name]);
         if (strcmp(name, "_start") == 0)
         {
-            fprintf(stderr, "%s\n", name);
+            fprintf(stderr, "%s     @%06x\n", name, symbol->offset);
             sim.setPC(symbol->offset);
         }
     }

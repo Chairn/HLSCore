@@ -30,7 +30,7 @@
 #ifndef __SYNTHESIS__
 #include <cstdio>
 #include <stdint.h>
-#if 0
+#if 1
 #define debug(...)      printf(__VA_ARGS__)     // generic debug, can be deactivated
 #else
 #define debug(...)

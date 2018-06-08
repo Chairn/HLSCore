@@ -189,18 +189,22 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
             ictrl.currentset = getSet(address);
             ictrl.i = getOffset(address);
 
-            //if(!ictrl.ctrlLoaded)
+            if(!ictrl.ctrlLoaded)
             {
                 #pragma hls_unroll yes
                 loadiset:for(int i = 0; i < Associativity; ++i)
                 {
-                    ictrl.setctrl.data[i] = data[ictrl.currentset][ictrl.i][i];
                     ictrl.setctrl.tag[i] = ictrl.tag[ictrl.currentset][i];
                     ictrl.setctrl.valid[i] = ictrl.valid[ictrl.currentset][i];
                 #if Policy == FIFO || Policy == LRU
                     ictrl.setctrl.policy = ictrl.policy[ictrl.currentset];
                 #endif
                 }
+            }
+            #pragma hls_unroll yes
+            loadidata:for(int i = 0; i < Associativity; ++i)    // force reload because offset may have changed
+            {
+                ictrl.setctrl.data[i] = data[ictrl.currentset][ictrl.i][i];
             }
 
             ictrl.workAddress = address;
@@ -238,7 +242,7 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
         break;
     case IState::StoreControl:
         #pragma hls_unroll yes
-        if(ictrl.ctrlLoaded)
+        if(ictrl.ctrlLoaded)        // this prevent storing false control when we jump to another jump instruction
         {
             debug("StoreControl for %d %d  %06x to %06x\n", ictrl.currentset.to_int(), ictrl.currentway.to_int(),
                         (ictrl.setctrl.tag[ictrl.currentway].to_int() << tagshift) | (ictrl.currentset.to_int() << setshift),
@@ -300,7 +304,7 @@ void icache(ICacheControl& ictrl, unsigned int imem[N], unsigned int data[Sets][
 
     simul(if(insvalid)
     {
-        coredebug("i    @%06x   %08x\n", cachepc.to_int(), instruction);
+        coredebug("i    @%06x   %08x    %d %d\n", cachepc.to_int(), instruction, ictrl.currentset.to_int(), ictrl.currentway.to_int());
     })
 
 }

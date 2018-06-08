@@ -8,7 +8,7 @@
 
 void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
 {
-    ac_int<32, false> wrapped_address = address;// % N;
+    ac_int<32, false> wrapped_address = address % N;
     ac_int<32, true> byte0 = value.slc<8>(0);
     ac_int<32, true> byte1 = value.slc<8>(8);
     ac_int<32, true> byte2 = value.slc<8>(16);
@@ -54,7 +54,7 @@ void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, tru
 
 ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac_int<2, false> op, bool sign)
 {
-    ac_int<32, false> wrapped_address = address;// % N;
+    ac_int<32, false> wrapped_address = address % N;
     ac_int<2, false> offset = wrapped_address & 0x3;
     ac_int<32, false> location = wrapped_address >> 2;
     ac_int<32, true> result;
@@ -158,13 +158,13 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
             ftoDC.pc = pc;
             if(control)
             {
-                pc = jump_pc;
+                pc = jump_pc % N;
                 iaddress = pc;
             }
             else
             {
                 iaddress = pc;
-                pc = next_pc;
+                pc = next_pc % N;
             }
             debug("%06x\n", pc.to_int());
         }
@@ -176,17 +176,18 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
 
             if(!init)
             {
+                pc %= N;
                 iaddress = pc;
                 init = true;
             }
-            else if(mem_lock > 1)
+            else if(mem_lock > 1)   // there was a jump ealier, so we do nothing because right instruction still hasn't been fetched
             {
                 debug("Had a jump, not moving & ");
             }
             // if there's a jump at the same time of a miss, update to jump_pc
             else if(control)
             {
-                pc = jump_pc;
+                pc = jump_pc % N;
                 debug("Jumping & ");
             }
             iaddress = pc;
@@ -684,8 +685,8 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     sign = 0;
                     break;
                 }
-#if 0//ndef nocache
-                address = memtoWB.result;// % N;
+#ifndef nocache
+                address = memtoWB.result % N;
                 signenable = sign;
                 cacheenable = true;
                 writeenable = false;
@@ -710,8 +711,8 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     datasize = 0;
                     break;
                 }
-#if 0//ndef nocache
-                address = memtoWB.result;// % N;
+#ifndef nocache
+                address = memtoWB.result % N;
                 signenable = false;
                 cacheenable = true;
                 writeenable = true;
@@ -825,10 +826,10 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     static DCtoEx dctoEx = {0,0x13,0,0,0,0,0,0,0x13,0}; // opCode = 0x13
     static FtoDC ftoDC = {0,0x13};
 
-    static ac_int<32, true> REG[32] = {0,0,0xf0000,0,0,0,0,0,  //0xf00000 is stack address and so is the highest reachable address
+    static ac_int<32, true> REG[32] = {0,0,0xf0000,0,0,0,0,0,   // 0xf0000 is stack address and so is the highest reachable address
+                                       0,0,0,0,0,0,0,0,         // we can put whatever needed value for the stack
                                        0,0,0,0,0,0,0,0,
-                                       0,0,0,0,0,0,0,0,
-                                       0,0,0,0,0,0,0,0}; // Register file
+                                       0,0,0,0,0,0,0,0};
     static ac_int<2, false> sys_status = 0;
 
     static ac_int<7, false> prev_opCode = 0;
@@ -905,17 +906,19 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
         Ex(dctoEx, extoMem, ex_bubble, mem_bubble, sys_status);
         DC(REG, ftoDC, extoMem, memtoWB, dctoEx, prev_opCode, prev_pc, mem_lock, freeze_fetch, ex_bubble);
         Ft(pc,freeze_fetch, extoMem, ftoDC, mem_lock, iaddress, cachepc, instruction, insvalid, ins_memory);
-#ifndef nocache
-        icache(ictrl, ins_memory, idata, iaddress, cachepc, instruction, insvalid
-       #ifndef __SYNTHESIS__
-               , cycles
-       #endif
-               );
-#endif
-        /*if(cycles > 1e1)
-            exit = true;*/
     }
 
+    // icache is outside because it can still continues fetching
+#ifndef nocache
+    icache(ictrl, ins_memory, idata, iaddress, cachepc, instruction, insvalid
+   #ifndef __SYNTHESIS__
+           , cycles
+   #endif
+           );
+#endif
+
+    // riscv specification v2.2 p11
+    assert((pc.to_int() & 3) == 0 && "An instruction address misaligned exception is generated on a taken branch or unconditional jump if the target address is not four-byte aligned.");
 
     simul(
     if(early_exit)

@@ -1,6 +1,5 @@
 AC=/opt/Catapult-10.0b/Mgc_home/shared/include
-AP=/opt/Xilinx/Vivado_HLS/2015.4/include
-INC=$(AC) $(AP) ./include
+INC=$(AC) ./include
 LINC=./include
 INC_PARAMS=$(foreach d, $(INC), -I$d)
 VARS_CAT=-D__DEBUG__=1 -D__CATAPULT__=1
@@ -35,3 +34,6 @@ core_vivado.o: $(S)/core.cpp $(LINC)/riscvISA.h $(LINC)/registers.h $(LINC)/port
 
 clean:
 	rm -rf *.o catapult.sim vivado.sim 
+
+.PHONY: catapult clean debug
+

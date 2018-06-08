@@ -55,11 +55,13 @@ PINMAPS {{
 
 }}"""
 
-genCore = """project set -incr_directory {sets}x{ctrlwidth}cacheicore
-solution options set Project/ProjectNamePrefix SimpleCore
+header = """logfile close
+logfile open {sets}x{ctrlwidth}cachecore.log
+project set -incr_directory {sets}x{ctrlwidth}cachecore
 solution new -state initial
 solution options set /Input/CompilerFlags {{-D __CATAPULT__=1}}
 solution options set /Input/SearchPath ../include
+solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/memories -append
 flow package require /SCVerify
 solution file add ../src/core.cpp -type C++
 solution file add ../src/reformeddm_sim.cpp -type C++
@@ -68,8 +70,6 @@ solution file add ../src/syscall.cpp -type C++
 solution file add ../src/elfFile.cpp -type C++
 solution file add ../src/portability.cpp -type C++
 go new
-solution file set ../src/core.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
-//solution file set ../src/cache.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
 directive set -DESIGN_GOAL area
 directive set -OLD_SCHED false
 directive set -SPECULATE true
@@ -94,7 +94,7 @@ directive set -BLOCK_SYNC none
 directive set -TRANSACTION_SYNC ready
 directive set -DATA_SYNC none
 directive set -RESET_CLEARS_ALL_REGS true
-directive set -CLOCK_OVERHEAD 5.000000
+directive set -CLOCK_OVERHEAD 0.000000
 directive set -OPT_CONST_MULTS use_library
 directive set -CHARACTERIZE_ROM false
 directive set -PROTOTYPE_ROM true
@@ -106,17 +106,24 @@ directive set -CLUSTER_FAST_MODE false
 directive set -CLUSTER_TYPE combinational
 directive set -COMPGRADE fast
 directive set -DESIGN_HIERARCHY doStep
-go analyze
-solution options set ComponentLibs/SearchPath /udd/vegloff/Documents/comet/memories -append
+"""
+
+cacheparameters = """solution file set ../src/core.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
+//solution file set ../src/cache.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
+"""
+
+libraries = """go analyze
+solution library remove *
 solution library add C28SOI_SC_12_CORE_LL_ccs -file {{$MGC_HOME/pkgs/siflibs/designcompiler/CORE65LPHVT_ccs.lib}} -- -rtlsyntool DesignCompiler -vendor STMicroelectronics -technology {{28nm FDSOI}}
 solution library add ST_singleport_16777216x32
 solution library add ST_singleport_{datasize}x{datawidth}
 solution library add ST_singleport_{interleaveddatasize}x{datawidth}
 solution library add ST_singleport_{sets}x{ctrlwidth}
 go libraries
-directive set -CLOCKS {{clk {{-CLOCK_PERIOD {period:.2f} -CLOCK_EDGE rising -CLOCK_HIGH_TIME {halfperiod:.2f} -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {{}} -ENABLE_ACTIVE high}}}}
-go assembly
+"""
 
+genCore = """directive set -CLOCKS {{clk {{-CLOCK_PERIOD {period:.2f} -CLOCK_EDGE rising -CLOCK_HIGH_TIME {halfperiod:.2f} -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {{}} -ENABLE_ACTIVE high}}}}
+go assembly
 directive set /doStep/core/REG:rsc -MAP_TO_MODULE {{[Register]}}
 directive set /doStep/core/main -PIPELINE_INIT_INTERVAL 1
 directive set /doStep/core -CLOCK_OVERHEAD 0.0
@@ -128,38 +135,63 @@ directive set /doStep/core/ictrl.tag -WORD_WIDTH {tagbits}
 directive set /doStep/core/ictrl.valid -RESOURCE ictrl.tag:rsc
 directive set /doStep/core/ictrl.valid -WORD_WIDTH {associativity}
 directive set /doStep/core/ictrl.policy -RESOURCE ictrl.tag:rsc
+directive set /doStep/core/ddata:rsc -INTERLEAVE {associativity}
+directive set /doStep/core/ddata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/dctrl.tag:rsc -PACKING_MODE sidebyside
+directive set /doStep/core/dctrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
+directive set /doStep/core/dctrl.tag -WORD_WIDTH {tagbits} 
+directive set /doStep/core/dctrl.dirty -RESOURCE dctrl.tag:rsc
+directive set /doStep/core/dctrl.dirty -WORD_WIDTH {associativity}
+directive set /doStep/core/dctrl.valid -RESOURCE dctrl.tag:rsc
+directive set /doStep/core/dctrl.valid -WORD_WIDTH {associativity}
+directive set /doStep/core/dctrl.policy -RESOURCE dctrl.tag:rsc
 
 go architect
-cycle add /doStep/core/core:rlp/main/icache:case-0:if:read_mem(idata:rsc(0)(0).@) -from /doStep/core/core:rlp/main/loadiset:read_mem(ictrl.tag:rsc.@) -equal 0
+cycle add /doStep/core/core:rlp/main/icache:case-0:if#1:read_mem(idata:rsc(0)(0).@) -from /doStep/core/core:rlp/main/loadiset:read_mem(ictrl.tag:rsc.@) -equal 0
+cycle add /doStep/core/core:rlp/main/dcache:case-0:if:if:if:read_mem(ddata:rsc(0)(0).@) -from /doStep/core/core:rlp/main/loaddset:read_mem(dctrl.tag:rsc.@) -equal 0
+cycle add /doStep/core/core:rlp/main/loaddset:read_mem(dctrl.tag:rsc.@) -from /doStep/core/core:rlp/main/loadiset:read_mem(ictrl.tag:rsc.@) -equal 0
 go schedule
 go extract
-project save {sets}x{ctrlwidth}cacheicore.ccs
-
+project save {sets}x{ctrlwidth}cachecore.ccs
 """
-# ~ directive set /doStep/core/cachedata:rsc -INTERLEAVE {associativity}
-# ~ directive set /doStep/core/cachedata:rsc -MAP_TO_MODULE ST_singleport_{datasize}x{datawidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-# ~ directive set /doStep/core/cachectrl.tag:rsc -PACKING_MODE sidebyside
-# ~ directive set /doStep/core/cachectrl.tag:rsc -MAP_TO_MODULE ST_singleport_{sets}x{ctrlwidth}.ST_SPHD_BB_8192x32m16_aTdol_wrapper
-# ~ directive set /doStep/core/cachectrl.tag -WORD_WIDTH {tagbits} 
-# ~ directive set /doStep/core/cachectrl.dirty -RESOURCE cachectrl.tag:rsc
-# ~ directive set /doStep/core/cachectrl.dirty -WORD_WIDTH {associativity}
-# ~ directive set /doStep/core/cachectrl.valid -RESOURCE cachectrl.tag:rsc
-# ~ directive set /doStep/core/cachectrl.valid -WORD_WIDTH {associativity}
-# ~ directive set /doStep/core/cachectrl.policy -RESOURCE cachectrl.tag:rsc
 
-# ~ go architect
-# ~ cycle add /doStep/core/core:rlp/main/cache:case-0:if:if:if:read_mem(cachedata:rsc(0)(0).@) -from loadset:read_mem(cachectrl.tag:rsc.@) -equal 0
-# ~ go schedule
-# ~ go extract
-# ~ project save {sets}x{ctrlwidth}cachedcore.ccs
-
-
-exploreCore = """go new
-solution new
-solution rename {solutionname}
-//solution file set ../src/core.cpp -args {{-DSize={cachesize} -DAssociativity={associativity} -DBlocksize={blocksize}}}
-// change some directive?
-// change clock?
+exploreCore = """dofile func.tcl
+set maxf 0
+set co 0
+for {set overhead 0.0} {$overhead < 20} {set overhead [expr $overhead+1]} {
+	if { [catch {
+		for {set f 700} {$f < 1000} {set f [expr $f+5]} {
+			if { [catch {
+				set period [string range [expr 1000./$f] 0 4]
+				set solutionname "${f}MHz_${overhead}CO"
+				go new
+				solution new
+				solution rename ${solutionname}
+				directive set -CLOCK_OVERHEAD $overhead
+				go libraries
+				directive set -CLOCKS "clk {-CLOCK_PERIOD ${period} -CLOCK_EDGE rising -CLOCK_HIGH_TIME [expr ${period}/2] -CLOCK_OFFSET 0.000000 -CLOCK_UNCERTAINTY 0.0 -RESET_KIND sync -RESET_SYNC_NAME rst -RESET_SYNC_ACTIVE high -RESET_ASYNC_NAME arst_n -RESET_ASYNC_ACTIVE low -ENABLE_NAME {} -ENABLE_ACTIVE high}"
+				go architect
+				go schedule
+				go extract
+				if {$maxf < $f } {
+					set maxf [max $f $maxf]
+					set co $overhead
+					logfile message "New maximum frequency achieved : $maxf\n" info
+				}
+			}
+		]} {
+			logfile message "Failed to synthesize for $f MHz with $overhead\% clock overhead\n" info
+			puts "Failed to synthesize for $f MHz with $overhead\% clock overhead\n"
+			break
+		} }
+	}]} {
+		logfile message "Unexpected error\n" error
+		puts "Unexpected error\n"
+	}
+}
+logfile message "Maximum frequency : $maxf for $co\%\n" comment
+puts "Maximum frequency : $maxf for $co\%\n"
+project save
 """
 
 def is_powerof2(num):
@@ -169,7 +201,20 @@ def nextpowerof2(num):
 	assert(num > 0)
 	return 2**(num-1).bit_length()
 	
-def doCore(cachesize, associativity, blocksize):
+def doMem(memsize, bitwidth, name=None):
+	area = int(1.4624*memsize*(bitwidth/8)+4915)
+	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
+	if not os.path.isfile(memorypath):
+		mem = genMem.format(**locals())
+		if name is not None:
+			print("Generating {} memory {}x{} with area {}".format(name, memsize, bitwidth, area))
+		else:
+			print("Generating memory {}x{} with area {}".format(memsize, bitwidth, area))
+		with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
+			f.write(mem)
+		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
+	
+def doCore(cachesize, associativity, blocksize, explore=False):
 	sets = int(cachesize/(blocksize)/associativity)
 	tagbits = int(32 - log2(blocksize/4) - log2(sets) - 2)
 	bits = int(associativity*(tagbits+1+1)+associativity*(associativity-1)/2)
@@ -181,45 +226,10 @@ def doCore(cachesize, associativity, blocksize):
 	area = int((1.4624*sets*bitwidth)/8+4915)
 	tagbits = 4*tagbits
 
-	#control memory
-	memsize = sets
-	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(sets, bitwidth)
-	if not os.path.isfile(memorypath):
-		mem = genMem.format(**locals())
-		print("Generating control memory {}x{} with area {}".format(sets, bitwidth, area))
-		# ~ print(mem)
-		# ~ sys.exit()
-		with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
-			f.write(mem)
-		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
-
-	#data memory
+	doMem(2**24, 32, "main")
+	doMem(sets, bitwidth, "control")
+	doMem(int(8*cachesize/32), 32, "data")
 	bitwidth = 32
-	memsize = int(8*cachesize/bitwidth)
-	area = int(1.4624*memsize*(bitwidth/8)+4915)
-	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
-	if not os.path.isfile(memorypath):
-		mem = genMem.format(**locals())
-		print("Generating data memory {}x{} with area {}".format(memsize, bitwidth, area))
-		# ~ print(mem)
-		# ~ sys.exit()
-		with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
-			f.write(mem)
-		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
-
-	#data memory interleaved
-	bitwidth = 32
-	memsize = int(8*cachesize/bitwidth/associativity)
-	area = int(1.4624*memsize*(bitwidth/8)+4915)
-	memorypath = "/udd/vegloff/Documents/comet/memories/ST_singleport_{}x{}.lib".format(memsize, bitwidth)
-	if not os.path.isfile(memorypath):
-		mem = genMem.format(**locals())
-		print("Generating interleaved data memory {}x{} with area {}".format(memsize, bitwidth, area))
-		# ~ print(mem)
-		# ~ sys.exit()
-		with open("/udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl", "w") as f:
-			f.write(mem)
-		subprocess.check_call(["./catapult.sh", "-product lb -shell -f /udd/vegloff/Documents/comet/memories/generateCacheMemories.tcl"])
 
 	#core
 	datasize = int(8*cachesize/bitwidth)
@@ -229,21 +239,18 @@ def doCore(cachesize, associativity, blocksize):
 	ctrlwidth = nextpowerof2(bits)
 	period = 1.5
 	halfperiod = period/2
-	core = genCore.format(**locals())
-	with open("genCore.tcl", "w") as f:
+	core = (header + cacheparameters + libraries + genCore).format(**locals())
+	
+	if explore:
+		core += exploreCore
+		
+	with open("genCore_{}x32.tcl".format(cachesize), "w") as f:
 		f.write(core)
 
 	if args.shell:
-		subprocess.check_call(["./catapult.sh", "-shell -f genCore.tcl"])
+		subprocess.check_call(["./catapult.sh", "-shell -f genCore_{}x32.tcl".format(cachesize)])
 	else:
-		subprocess.check_call(["./catapult.sh", "-f genCore.tcl"])
-
-#or add // pragma dofile( noerrors : true ) in file to continue even if errors
-#then new tcl file
-#subprocess.check_call(["./catapult.sh", "-shell -f mytcl.tcl myproject.ccs"])
-# project load ...
-# new iteration
-# with -shell, error in synthesis is detected(at least for schedule error)
+		subprocess.check_call(["./catapult.sh", "-f genCore_{}x32.tcl".format(cachesize)])
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
@@ -252,6 +259,7 @@ if __name__ == "__main__":
 	parser.add_argument("-a", "--associativity", help="Cache associativity", type=int)
 	parser.add_argument("-b", "--blocksize", help="Cache blocksize in bytes", type=int)
 	parser.add_argument("-p", "--policy", help="Replacement policy")
+	parser.add_argument("-e", "--explore", help="Do some exploration in the solution space", action="store_true")
 
 	args = parser.parse_args()
 	try:
@@ -294,5 +302,5 @@ if __name__ == "__main__":
 	# ~ with open("output.log", "w") as output:
 		# ~ subprocess.check_call(["./testbench.sim"], stdout=output)
 
-	doCore(cachesize, associativity, blocksize)
+	doCore(cachesize, associativity, blocksize, args.explore)
 	

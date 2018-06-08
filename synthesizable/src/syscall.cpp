@@ -263,41 +263,170 @@ ac_int<32, false> solveSysCall(ac_int<32, false> syscallId, ac_int<32, false> ar
     {
     case SYS_exit:
         *sys_status = 1; //Currently we break on ECALL
+        debug("Syscall : SYS_exit\n");
         break;
     case SYS_read:
         result = doRead(arg1, arg2, arg3);
+        debug("Syscall : SYS_read\n");
         break;
     case SYS_write:
         result = doWrite(arg1, arg2, arg3);
+        debug("Syscall : SYS_write\n");
         break;
     case SYS_brk:
         result = doSbrk(arg1);
+        debug("Syscall : SYS_brk\n");
         break;
     case SYS_open:
         result = doOpen(arg1, arg2, arg3);
+        debug("Syscall : SYS_open\n");
         break;
     case SYS_openat:
         result = doOpenat(arg1, arg2, arg3, arg4);
+        debug("Syscall : SYS_openat\n");
         break;
     case SYS_lseek:
         result = doLseek(arg1, arg2, arg3);
+        debug("Syscall : SYS_lseek\n");
         break;
     case SYS_close:
         result = doClose(arg1);
+        debug("Syscall : SYS_close\n");
         break;
     case SYS_fstat:
+        debug("Syscall : SYS_fstat\n");
         result = 0;
         break;
     case SYS_stat:
         result = doStat(arg1, arg2);
+        debug("Syscall : SYS_stat\n");
         break;
     case SYS_gettimeofday:
         result = doGettimeofday(arg1);
+        debug("Syscall : SYS_gettimeofday\n");
         break;
     case SYS_unlink:
         result = doUnlink(arg1);
+        debug("Syscall : SYS_unlink\n");
+        break;
+    case SYS_exit_group:
+        debug("Syscall : SYS_exit_group\n");
+        *sys_status = 2;
+        break;
+    case SYS_getpid:
+        debug("Syscall : SYS_getpid\n");
+        *sys_status = 2;
+        break;
+    case SYS_kill:
+        debug("Syscall : SYS_kill\n");
+        *sys_status = 2;
+        break;
+    case SYS_link:
+        debug("Syscall : SYS_link\n");
+        *sys_status = 2;
+        break;
+    case SYS_mkdir:
+        debug("Syscall : SYS_mkdir\n");
+        *sys_status = 2;
+        break;
+    case SYS_chdir:
+        debug("Syscall : SYS_chdir\n");
+        *sys_status = 2;
+        break;
+    case SYS_getcwd:
+        debug("Syscall : SYS_getcwd\n");
+        *sys_status = 2;
+        break;
+    case SYS_lstat:
+        debug("Syscall : SYS_lstat\n");
+        *sys_status = 2;
+        break;
+    case SYS_fstatat:
+        debug("Syscall : SYS_fstatat\n");
+        *sys_status = 2;
+        break;
+    case SYS_access:
+        debug("Syscall : SYS_access\n");
+        *sys_status = 2;
+        break;
+    case SYS_faccessat:
+        debug("Syscall : SYS_faccessat\n");
+        *sys_status = 2;
+        break;
+    case SYS_pread:
+        debug("Syscall : SYS_pread\n");
+        *sys_status = 2;
+        break;
+    case SYS_pwrite:
+        debug("Syscall : SYS_pwrite\n");
+        *sys_status = 2;
+        break;
+    case SYS_uname:
+        debug("Syscall : SYS_uname\n");
+        *sys_status = 2;
+        break;
+    case SYS_getuid:
+        debug("Syscall : SYS_getuid\n");
+        *sys_status = 2;
+        break;
+    case SYS_geteuid:
+        debug("Syscall : SYS_geteuid\n");
+        *sys_status = 2;
+        break;
+    case SYS_getgid:
+        debug("Syscall : SYS_getgid\n");
+        *sys_status = 2;
+        break;
+    case SYS_getegid:
+        debug("Syscall : SYS_getegid\n");
+        *sys_status = 2;
+        break;
+    case SYS_mmap:
+        debug("Syscall : SYS_mmap\n");
+        *sys_status = 2;
+        break;
+    case SYS_munmap:
+        debug("Syscall : SYS_munmap\n");
+        *sys_status = 2;
+        break;
+    case SYS_mremap:
+        debug("Syscall : SYS_mremap\n");
+        *sys_status = 2;
+        break;
+    case SYS_time:
+        debug("Syscall : SYS_time\n");
+        *sys_status = 2;
+        break;
+    case SYS_getmainvars:
+        debug("Syscall : SYS_getmainvars\n");
+        *sys_status = 2;
+        break;
+    case SYS_rt_sigaction:
+        debug("Syscall : SYS_rt_sigaction\n");
+        *sys_status = 2;
+        break;
+    case SYS_writev:
+        debug("Syscall : SYS_writev\n");
+        *sys_status = 2;
+        break;
+    case SYS_times:
+        debug("Syscall : SYS_times\n");
+        *sys_status = 2;
+        break;
+    case SYS_fcntl:
+        debug("Syscall : SYS_fcntl\n");
+        *sys_status = 2;
+        break;
+    case SYS_getdents:
+        debug("Syscall : SYS_getdents\n");
+        *sys_status = 2;
+        break;
+    case SYS_dup:
+        debug("Syscall : SYS_dup\n");
+        *sys_status = 2;
         break;
     default:
+        debug("Syscall : Unknown system call, %x\n", syscallId.to_int());
         *sys_status = 2;
         break;
     }
