@@ -12,7 +12,7 @@ HEADER=cache.h core.h elf.h elfFile.h portability.h riscvISA.h syscall.h DataMem
 I_HEADER=$(foreach f, $(HEADER), $(INC)/$f)
 
 catapult: $(S_FILES) $(I_HEADER)
-	g++ -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT) $(DEFINES)
+	g++ -O3 -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT) $(DEFINES)
 
 debug: $(S_FILES) $(I_HEADER)
 	g++ -g -o catapult.sim $(INC_PARAMS) $(S_FILES) $(VARS_CAT) $(DEFINES) -DDebug

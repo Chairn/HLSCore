@@ -6,103 +6,32 @@
 #include "syscall.h"
 #endif
 
-void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op)
+void memorySet(unsigned int memory[N], ac_int<32, false> address, ac_int<32, true> value, ac_int<2, false> op
+            #ifndef __SYNTHESIS__
+               , ac_int<64, false>& cycles
+            #endif
+               )
 {
     ac_int<32, false> wrapped_address = address % N;
-    ac_int<32, true> byte0 = value.slc<8>(0);
-    ac_int<32, true> byte1 = value.slc<8>(8);
-    ac_int<32, true> byte2 = value.slc<8>(16);
-    ac_int<32, true> byte3 = value.slc<8>(24);
-    ac_int<2, false> offset = wrapped_address & 0x3;
     ac_int<32, false> location = wrapped_address >> 2;
-    /*this wont synthesize in catapult */
-#ifdef __SIMULATOR__
-    //first read existing value
-    ac_int<32, true> memory_val = memory[location];
-    ac_int<32, true> shifted_byte;
-    ac_int<32, true> mask[4];
-    mask[0] = 0xFFFFFF00;
-    mask[1] = 0xFFFF00FF;
-    mask[2] = 0xFF00FFFF;
-    mask[3] = 0x00FFFFFF;
-    ac_int<32, true> val_to_be_written;
-    val_to_be_written = (memory_val & mask[offset]) | (byte0 << (offset*8));
-    if(op & 1)
-    {
-        val_to_be_written = (val_to_be_written & mask[offset+1]) | (byte1 << ((offset+1)*8));
-    }
-    if(op & 2)
-    {
-        val_to_be_written = value;
-    }
-    memory[location] = val_to_be_written;
-    assert(false);
-#endif
-    /*this will synthesize in catapult */
-#ifdef __CATAPULT__
-#ifndef __SYNTHESIS__
     ac_int<32, false> memory_val = memory[location];
+    simul(cycles += MEMORY_READ_LATENCY);
     formatwrite(address, op, memory_val, value);
     // data                                     size-1        @address         what was there before  what we want to write  what is actually written
     coredebug("dW%d  @%06x   %08x   %08x   %08x\n", op.to_int(), wrapped_address.to_int(), memory[location], value.to_int(), memory_val.to_int());
     memory[location] = memory_val;
-#else
-    memory[location] = value;
-#endif
-#endif
 }
 
-ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac_int<2, false> op, bool sign)
+ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac_int<2, false> op, bool sign
+                       #ifndef __SYNTHESIS__
+                           , ac_int<64, false>& cycles
+                       #endif
+                           )
 {
     ac_int<32, false> wrapped_address = address % N;
-    ac_int<2, false> offset = wrapped_address & 0x3;
     ac_int<32, false> location = wrapped_address >> 2;
-    ac_int<32, true> result;
-    result = sign ? -1 : 0;
     ac_int<32, false> mem_read = memory[location];
-    /*ac_int<8, true> byte0 = mem_read.slc<8>(0);
-    ac_int<8, true> byte1 = mem_read.slc<8>(8);
-    ac_int<8, true> byte2 = mem_read.slc<8>(16);
-    ac_int<8, true> byte3 = mem_read.slc<8>(24);
-
-    switch(offset)
-    {
-    case 0:
-        break;
-    case 1:
-        byte0 = byte1;
-        break;
-    case 2:
-        byte0 = byte1;
-        byte1 = byte3;
-        break;
-    case 3:
-        byte0 = byte3;
-        break;
-    }
-    result.set_slc(0,byte0);
-    if(op & 1)
-    {
-        result.set_slc(8,byte1);
-    }
-    if(op & 2)
-    {
-        result.set_slc(16,byte2);
-        result.set_slc(24,byte3);
-    }
-    simul(
-    switch(address.slc<2>(0))   // address & offmask
-    {
-    case 1:
-        assert(op == 0 && "address misalignment");
-        break;
-    case 2:
-        assert(op <= 1 && "address misalignment");
-        break;
-    case 3:
-        assert(op == 0 && "address misalignment");
-        break;
-    })*/
+    simul(cycles += MEMORY_READ_LATENCY);
     formatread(address, op, sign, mem_read);
     // data                                   size-1        @address               what is in memory   what is actually read    sign extension
     coredebug("dR%d  @%06x   %08x   %08x   %s\n", op.to_int(), wrapped_address.to_int(), memory[location], mem_read.to_int(), sign?"true":"false");
@@ -112,7 +41,11 @@ ac_int<32, true> memoryGet(unsigned int memory[N], ac_int<32, false> address, ac
 void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC, ac_int<3, false> mem_lock, // cpu internal logic
         ac_int<32, false>& iaddress,                                                // to cache
         ac_int<32, false> cachepc, unsigned int instruction, bool insvalid,         // from cache
-        unsigned int ins_memory[N])
+        unsigned int ins_memory[N]
+    #ifndef __SYNTHESIS__
+        , ac_int<64, false>& cycles
+    #endif
+        )
 {
     ac_int<32, false> next_pc;
     if(freeze_fetch)
@@ -159,11 +92,9 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
             if(control)
             {
                 pc = jump_pc % N;
-                iaddress = pc;
             }
             else
             {
-                iaddress = pc;
                 pc = next_pc % N;
             }
             debug("%06x\n", pc.to_int());
@@ -177,7 +108,6 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
             if(!init)
             {
                 pc %= N;
-                iaddress = pc;
                 init = true;
             }
             else if(mem_lock > 1)   // there was a jump ealier, so we do nothing because right instruction still hasn't been fetched
@@ -190,9 +120,9 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
                 pc = jump_pc % N;
                 debug("Jumping & ");
             }
-            iaddress = pc;
             debug("Requesting @%06x\n", pc.to_int());
         }
+        iaddress = pc;
     }
     else      // we cannot overwrite because it would not execute the frozen instruction
     {
@@ -213,6 +143,7 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
     if(!freeze_fetch)
     {
         ftoDC.instruction = ins_memory[pc/4];
+        simul(cycles += MEMORY_READ_LATENCY);
         ftoDC.pc = pc;
         //debug("i @%06x (%06x)   %08x    S:3\n", pc.to_int(), pc.to_int()/4, ins_memory[pc/4]);
     }
@@ -235,7 +166,11 @@ void Ft(ac_int<32, false>& pc, bool freeze_fetch, ExtoMem extoMem, FtoDC& ftoDC,
 }
 
 void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB, DCtoEx& dctoEx, ac_int<7, false>& prev_opCode,
-        ac_int<32, false>& prev_pc, ac_int<3, false> mem_lock, bool& freeze_fetch, bool& ex_bubble)
+        ac_int<32, false>& prev_pc, ac_int<3, false> mem_lock, bool& freeze_fetch, bool& ex_bubble
+    #ifndef __SYNTHESIS__
+        , ac_int<32, false> CSR[0x1000]
+    #endif
+        )
 {
     ac_int<5, false> rs1 = ftoDC.instruction.slc<5>(15);       // Decoding the instruction, in the DC stage
     ac_int<5, false> rs2 = ftoDC.instruction.slc<5>(20);
@@ -331,12 +266,32 @@ void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB,
         break;
 #ifndef __SYNTHESIS__
     case RISCV_SYSTEM:
-        dctoEx.dest = 10;
-        rs1 = 17;
-        rs2 = 10;
-        dctoEx.datac = (extoMem.dest == 11 && mem_lock < 2) ? extoMem.result : ((memtoWB.dest == 11 && mem_lock == 0) ? memtoWB.result : REG[11]);
-        dctoEx.datad = (extoMem.dest == 12 && mem_lock < 2) ? extoMem.result : ((memtoWB.dest == 12 && mem_lock == 0) ? memtoWB.result : REG[12]);
-        dctoEx.datae = (extoMem.dest == 13 && mem_lock < 2) ? extoMem.result : ((memtoWB.dest == 13 && mem_lock == 0) ? memtoWB.result : REG[13]);
+        switch(dctoEx.funct3)
+        {
+        case RISCV_SYSTEM_ENV:
+            dctoEx.dest = 10;
+            rs1 = 17;
+            rs2 = 10;
+            dctoEx.datac = (extoMem.dest == 11 && mem_lock < 2) ? extoMem.result : ((memtoWB.dest == 11 && mem_lock == 0) ? memtoWB.result : REG[11]);
+            dctoEx.datad = (extoMem.dest == 12 && mem_lock < 2) ? extoMem.result : ((memtoWB.dest == 12 && mem_lock == 0) ? memtoWB.result : REG[12]);
+            dctoEx.datae = (extoMem.dest == 13 && mem_lock < 2) ? extoMem.result : ((memtoWB.dest == 13 && mem_lock == 0) ? memtoWB.result : REG[13]);
+            break;
+        case RISCV_SYSTEM_CSRRW:
+        case RISCV_SYSTEM_CSRRS:
+        case RISCV_SYSTEM_CSRRC:
+        case RISCV_SYSTEM_CSRRWI:
+        case RISCV_SYSTEM_CSRRSI:
+        case RISCV_SYSTEM_CSRRCI:
+            dctoEx.memValue = CSR[imm12_I];
+            dctoEx.dest = rd;
+            //dataa will contain rs1
+            break;
+        default:
+            assert(false);
+            break;
+        }
+
+
         break;
 #endif
     }
@@ -362,6 +317,7 @@ void DC(ac_int<32, true> REG[32], FtoDC ftoDC, ExtoMem extoMem, MemtoWB memtoWB,
         freeze_fetch = 1;
         ex_bubble = 1;
     }
+    // add a stall for CSRs instruction because they should be atomic? Detect if 2 CSRs follow each other
     prev_opCode = opcode;
     prev_pc = ftoDC.pc;
 
@@ -395,7 +351,7 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
     extoMem.funct3 = dctoEx.funct3;
     extoMem.datad = dctoEx.datad;
     extoMem.sys_status = 0;
-    if ((extoMem.opCode != RISCV_BR) && (extoMem.opCode != RISCV_ST))
+    if ((extoMem.opCode != RISCV_BR) && (extoMem.opCode != RISCV_ST) && (extoMem.opCode != RISCV_MISC_MEM))
     {
         extoMem.WBena = 1;
     }
@@ -546,9 +502,40 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
             }
         }
         break;
+    case RISCV_MISC_MEM:    // this does nothing because all memory accesses are ordered and we have only one core
+        break;
 #ifndef __SYNTHESIS__
     case RISCV_SYSTEM:
-        extoMem.result = solveSysCall(dctoEx.dataa, dctoEx.datab, dctoEx.datac, dctoEx.datad, dctoEx.datae, &extoMem.sys_status);
+        switch(dctoEx.funct3)
+        {
+        case RISCV_SYSTEM_ENV:
+            extoMem.result = solveSysCall(dctoEx.dataa, dctoEx.datab, dctoEx.datac, dctoEx.datad, dctoEx.datae, &extoMem.sys_status);
+            break;
+        case RISCV_SYSTEM_CSRRW:
+            //assert(false);
+            break;
+        case RISCV_SYSTEM_CSRRS:
+            extoMem.WBena = false;
+            extoMem.result = dctoEx.memValue | dctoEx.dataa;
+
+            break;
+        case RISCV_SYSTEM_CSRRC:
+            //assert(false);
+            break;
+        case RISCV_SYSTEM_CSRRWI:
+            //assert(false);
+            break;
+        case RISCV_SYSTEM_CSRRSI:
+            //assert(false);
+            break;
+        case RISCV_SYSTEM_CSRRCI:
+            //assert(false);
+            break;
+        default:
+            assert(false);
+            break;
+        }
+
         break;
     default:
         fprintf(stderr, "Error : Unknown operation in Ex stage : @%06x	%08x\n", extoMem.pc.to_int(), extoMem.instruction.to_int());
@@ -587,11 +574,11 @@ void Ex(DCtoEx dctoEx, ExtoMem& extoMem, bool& ex_bubble, bool& mem_bubble, ac_i
 
 void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool& mem_bubble, bool& wb_bubble, bool& cachelock,  // internal core control
             ac_int<32, false>& address, ac_int<2, false>& datasize, bool& signenable, bool& cacheenable, bool& writeenable, int& writevalue,      // control & data to cache
-            int readvalue, bool datavalid, unsigned int data_memory[N]           // data & acknowledgment from cache
+            int readvalue, bool datavalid, unsigned int data_memory[N]
             #ifndef __SYNTHESIS__
-            , int cycles
+                , ac_int<64, false>& cycles
             #endif
-            )
+            )          // data & acknowledgment from cache
 {
     if(cachelock)
     {
@@ -681,7 +668,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                     sign = 1;
                     break;
                 case RISCV_LD_LBU:
-                    datasize = 1;
+                    datasize = 0;
                     sign = 0;
                     break;
                 }
@@ -695,7 +682,11 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                 memtoWB.pc = 0;
 #else
                 //debug("%5d  ", cycles);
-                memtoWB.result = memoryGet(data_memory, memtoWB.result, datasize, sign);
+                memtoWB.result = memoryGet(data_memory, memtoWB.result, datasize, sign
+                                       #ifndef __SYNTHESIS__
+                                           , cycles
+                                       #endif
+                                           );
 #endif
                 break;
             case RISCV_ST:
@@ -722,7 +713,11 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
                 memtoWB.pc = 0;
 #else
                 //debug("%5d  ", cycles);
-                memorySet(data_memory, memtoWB.result, extoMem.datac, datasize);
+                memorySet(data_memory, memtoWB.result, extoMem.datac, datasize
+                      #ifndef __SYNTHESIS__
+                          , cycles
+                      #endif
+                          );
 #endif
                 //data_memory[(memtoWB.result/4)%N] = extoMem.datac;
                 break;
@@ -739,11 +734,7 @@ void do_Mem(ExtoMem extoMem, MemtoWB& memtoWB, ac_int<3, false>& mem_lock, bool&
     })
 }
 
-void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& early_exit
-#ifndef __SYNTHESIS__
-    , unsigned int& numins
-#endif
-    )
+void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& early_exit, ac_int<64, false>& instrets)
 {
     if (memtoWB.WBena == 1 && memtoWB.dest != 0)
     {
@@ -760,29 +751,30 @@ void doWB(ac_int<32, true> REG[32], MemtoWB memtoWB, bool& wb_bubble, bool& earl
         debug("\nUnknown system call received, Exiting...");
         early_exit = 1;
     }
+#endif
 
     if(memtoWB.pc)
     {
         static int lastpc = 0;
         if(memtoWB.pc != lastpc)
         {
-            ++numins;
+            ++instrets;
             lastpc = memtoWB.pc;
         }
-        coredebug("\nWB   @%06x   %08x   (%d)\n", memtoWB.pc.to_int(), memtoWB.instruction.to_int(), numins);
+        coredebug("\nWB   @%06x   %08x   (%d)\n", memtoWB.pc.to_int(), memtoWB.instruction.to_int(), instrets.to_int());
     }
     else
     {
         coredebug("\nWB   \n");
     }
-#endif
+
 }
 
-void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int dm[N], bool& exit
-#ifndef __SYNTHESIS__
-    , uint64_t cycles
-#endif
-)
+void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int dm[N], bool& exit,
+        #ifndef __SYNTHESIS__
+            ac_int<64, false>& c, ac_int<64, false>& numins
+        #endif
+            )
 {
     static ICacheControl ictrl = {0};
     static unsigned int idata[Sets][Blocksize][Associativity] = {0};
@@ -830,6 +822,11 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
                                        0,0,0,0,0,0,0,0,         // we can put whatever needed value for the stack
                                        0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0,0};
+    static ac_int<64, false> cycles = 1;
+    static ac_int<64, false> instrets = 0;
+    static ac_int<32, false> mstatus = 0x00001900;
+    static ac_int<32, false> CSR[0x1000] = {0};
+    //static ac_int<64, false> timer = 0;
     static ac_int<2, false> sys_status = 0;
 
     static ac_int<7, false> prev_opCode = 0;
@@ -867,17 +864,10 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
     static int readvalue = 0;
     static bool datavalid = false;
 
+    simul(uint64_t oldcycles = cycles);
 
-#ifndef __SYNTHESIS__
-    static unsigned int numins = 0;
-#endif
-
-    doWB(REG, memtoWB, wb_bubble, early_exit
-     #ifndef __SYNTHESIS__
-         , numins
-     #endif
-         );
-    simul(coredebug("%d ", cycles);
+    doWB(REG, memtoWB, wb_bubble, early_exit, instrets);
+    simul(coredebug("%d ", cycles.to_int64());
     for(int i=0; i<32; i++)
     {
         if(REG[i])
@@ -893,29 +883,47 @@ void doStep(ac_int<32, false> startpc, unsigned int ins_memory[N], unsigned int 
            , cycles
        #endif
            );
+
 #ifndef nocache
     dcache(dctrl, dm, ddata, daddress, datasize, signenable, dcacheenable, writeenable, writevalue, readvalue, datavalid
-      #ifndef __SYNTHESIS__
-          , cycles
-      #endif
-          );
+       #ifndef __SYNTHESIS__
+           , cycles
+       #endif
+           );
 #endif
 
     if(!cachelock)
     {
         Ex(dctoEx, extoMem, ex_bubble, mem_bubble, sys_status);
-        DC(REG, ftoDC, extoMem, memtoWB, dctoEx, prev_opCode, prev_pc, mem_lock, freeze_fetch, ex_bubble);
-        Ft(pc,freeze_fetch, extoMem, ftoDC, mem_lock, iaddress, cachepc, instruction, insvalid, ins_memory);
+        DC(REG, ftoDC, extoMem, memtoWB, dctoEx, prev_opCode, prev_pc, mem_lock, freeze_fetch, ex_bubble, CSR);
+        Ft(pc,freeze_fetch, extoMem, ftoDC, mem_lock, iaddress, cachepc, instruction, insvalid, ins_memory
+   #ifndef __SYNTHESIS__
+          , cycles
+   #endif
+          );
     }
 
     // icache is outside because it can still continues fetching
 #ifndef nocache
     icache(ictrl, ins_memory, idata, iaddress, cachepc, instruction, insvalid
-   #ifndef __SYNTHESIS__
+       #ifndef __SYNTHESIS__
            , cycles
-   #endif
+       #endif
            );
 #endif
+
+    cycles++;
+
+    simul(
+    int M = MEMORY_READ_LATENCY>MEMORY_WRITE_LATENCY?MEMORY_READ_LATENCY:MEMORY_WRITE_LATENCY;
+    if(oldcycles + M < cycles)
+    {
+        cycles = oldcycles + M; // we cannot step slower than the worst latency
+    }
+    c = cycles;
+    numins = instrets;
+    )
+
 
     // riscv specification v2.2 p11
     assert((pc.to_int() & 3) == 0 && "An instruction address misaligned exception is generated on a taken branch or unconditional jump if the target address is not four-byte aligned.");

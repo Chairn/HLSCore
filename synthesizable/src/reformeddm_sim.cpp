@@ -135,9 +135,9 @@ CCS_MAIN(int argc, char** argv)
         binaryFile = argv[1];
     else
 #ifdef __SYNTHESIS__
-        binaryFile = "../benchmarks/build/matmul4_4.out";
+        binaryFile = "../benchmarks/build/matmul_int_4.riscv";
 #else
-        binaryFile = "benchmarks/build/matmul4_4.out";
+        binaryFile = "benchmarks/build/matmul_int_4.riscv";
 #endif
     fprintf(stderr, "Simulating %s\n", binaryFile);
     std::cout << "Simulating " << binaryFile << std::endl;
@@ -183,35 +183,68 @@ CCS_MAIN(int argc, char** argv)
 
     sim.fillMemory();
 
-    /*for(int s(0); s < 2; ++s)
+
+    // test for formatread
+    /*srand(0);
+    for(int s(0); s < 2; ++s)
     {
         debug("%s\n", s?"Sign extension":"No sign extension");
         for(int size(0); size < 4; ++size)
         {
             if(size == 2)
                 continue;
-            debug("Size %d\n", size);
-            for(ac_int<32, false> i(0); i < 256; ++i)
+
+            for(int ad(0); ad < 4; ++ad)
             {
-                ac_int<32, false> r = (i << 24) + (i << 16) + (i <<8) + i;
-                formatread(0, size, s, r);
-                debug("%08x ", r.to_int());
+                if(((size == 1 || size == 3) && (ad & 1)) || ((size == 3) && ad == 2))
+                    continue;
+                debug("Size %d Address %d \n", size, ad);
+                for(ac_int<32, false> i(0); i < 8; ++i)
+                {
+                    ac_int<32, false> r = (rand()/(double)RAND_MAX)*0xFFFFFFFF;
+                    debug("%08x ", r.to_int());
+                    formatread(ad, size, s, r);
+                    debug("%08x\n", r.to_int());
+                }
+                debug("\n");
             }
+
             debug("\n");
         }
-        for(int ad(0); ad < 4; ++ad)
+
+    }
+
+    return 0;*/
+
+
+    // test for formatwrite
+    /*srand(0);
+    for(int bit = 0; bit < 2; ++bit)
+    {
+        for(int size(0); size < 4; ++size)
         {
-            debug("Address %d\n", ad);
-            for(ac_int<32, false> i(0); i < 256; ++i)
+            if(size == 2)
+                continue;
+
+            for(int ad(0); ad < 4; ++ad)
             {
-                ac_int<32, false> r = (i << 24) + (i << 16) + (i <<8) + i;
-                formatread(ad, 0, s, r);
-                debug("%08x ", r.to_int());
+                if(((size == 1 || size == 3) && (ad & 1)) || ((size == 3) && ad == 2))
+                    continue;
+                debug("Size %d Address %d \n", size, ad);
+                for(ac_int<32, false> i(0); i < 8; ++i)
+                {
+                    ac_int<32, false> r = (rand()/(double)RAND_MAX)*0xFFFFFFFF;
+                    ac_int<32, false> mem = -bit;
+                    debug("%08x ", r.to_int());
+                    formatwrite(ad, size, mem, r);
+                    debug("%08x\n", mem.to_int());
+                }
+                debug("\n");
             }
+
             debug("\n");
         }
     }
-
     return 0;*/
 
 
@@ -242,25 +275,19 @@ CCS_MAIN(int argc, char** argv)
     }
     coredebug("end of preambule\n");
 
-    uint64_t cycles = 1;
+    ac_int<64, false> cycles, numins;
     bool exit = false;
     while(!exit)
     {
         CCS_DESIGN(doStep(sim.getPC(), im, dm, exit
                   #ifndef __SYNTHESIS__
-                          , cycles++
+                      , cycles, numins
                   #endif
-                          ));
-        if(cycles >
-        #ifndef nocache
-                (uint64_t)1e7
-        #else
-                (uint64_t)2e6
-        #endif
-                )
+                  ));
+        if(cycles > (uint64_t)1e7)
             break;
     }
-    coredebug("Successfully executed all instructions in %d cycles\n", cycles);
+    coredebug("Successfully executed %d instructions in %d cycles\n", numins.to_int64(), cycles.to_int64());
 
     std::cout << "memory :" <<std::endl;
     for(int i = 0; i < N; i++)

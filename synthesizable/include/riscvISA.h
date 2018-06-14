@@ -80,6 +80,8 @@
 #define RISCV_SYSTEM_CSRRWI     0x5
 #define RISCV_SYSTEM_CSRRSI     0x6
 #define RISCV_SYSTEM_CSRRCI     0x7
+
+#define RISCV_MISC_MEM          0xf
 //FIXME some special operations of the base instruction set are not yet supported. (FENCE)
 /******************************************************************************************************
 * Specification of the standard M extension

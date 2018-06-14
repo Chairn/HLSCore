@@ -56,8 +56,8 @@ PINMAPS {{
 }}"""
 
 header = """logfile close
-logfile open {sets}x{ctrlwidth}cachecore.log
-project set -incr_directory {sets}x{ctrlwidth}cachecore
+logfile open {cachesize}x32cachecore.log
+project set -incr_directory {cachesize}x32cachecore
 solution new -state initial
 solution options set /Input/CompilerFlags {{-D __CATAPULT__=1}}
 solution options set /Input/SearchPath ../include
@@ -152,7 +152,7 @@ cycle add /doStep/core/core:rlp/main/dcache:case-0:if:if:if:read_mem(ddata:rsc(0
 cycle add /doStep/core/core:rlp/main/loaddset:read_mem(dctrl.tag:rsc.@) -from /doStep/core/core:rlp/main/loadiset:read_mem(ictrl.tag:rsc.@) -equal 0
 go schedule
 go extract
-project save {sets}x{ctrlwidth}cachecore.ccs
+project save {cachesize}x32cachecore.ccs
 """
 
 exploreCore = """dofile func.tcl

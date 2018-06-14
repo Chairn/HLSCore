@@ -20,27 +20,15 @@ void formatread(ac_int<32, false> address, ac_int<2, false> datasize, bool sign,
         assert(datasize == 0 && "address misalignment");
         break;
     }
-    switch(datasize)
+    if(datasize == 0)
     {
-    case 0:
-        read &= 0x000000FF;
-        if(sign && read.slc<1>(7))
-            read |= 0xFFFFFF00;
-        break;
-    case 1:
-        read &= 0x0000FFFF;
-        if(sign && read.slc<1>(15))
-            read |= 0xFFFF0000;
-        break;
-    case 2:
-        read &= 0xFFFFFFFF;
-        assert(false && "Size 2 (3 bytes) not supported");
-        break;
-    case 3:
-        read &= 0xFFFFFFFF;
-        if(sign && read.slc<1>(31))
-            read |= 0x00000000;
-        break;
+        ac_int<1, true> bit = sign & read.slc<1>(7);
+        read.set_slc(8, (ac_int<24, true>)bit);
+    }
+    else if(datasize == 1)
+    {
+        ac_int<1, true> bit = sign & read.slc<1>(15);
+        read.set_slc(16, (ac_int<16, true>)bit);
     }
 }
 
@@ -55,7 +43,7 @@ void formatwrite(ac_int<32, false> address, ac_int<2, false> datasize, ac_int<32
             mem.set_slc(0, write.slc<8>(0));
             break;
         case 1:
-            mem.set_slc(8, write.slc<16>(0));
+            mem.set_slc(0, write.slc<16>(0));
             break;
         case 2:
             mem = write;

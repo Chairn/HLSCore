@@ -1,9 +1,12 @@
+#ifdef __unix__
+#include <stdio.h>
+#endif
 #include <qsort.h>
-int partition(int low,int hi)
+int partition(int low, int hi)
 {
-    int pivot = A[hi];
+    TYPE pivot = A[hi];
     int i = low-1,j;
-    int temp;
+    TYPE temp;
     for(j = low; j<hi; j++)
     {
         if(A[j] < pivot)
@@ -23,7 +26,7 @@ int partition(int low,int hi)
     return i+1;
 }
 
-void  qsort(int low, int hi)
+void qsort(int low, int hi)
 {
     if(low < hi)
     {
@@ -36,4 +39,9 @@ void  qsort(int low, int hi)
 int main()
 {
     qsort(0,SIZE-1);
+
+#ifdef __unix__
+    for(int i(0); i < SIZE; ++i)
+        printf("%d\n", A[i]);
+#endif 
 }

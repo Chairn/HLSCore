@@ -58,10 +58,10 @@ struct MemtoWB
 
 
 void doStep(ac_int<32, false> pc, unsigned int ins_memory[N], unsigned int dm[N], bool &exit
-#ifndef __SYNTHESIS__
-, uint64_t cycles
-#endif
-);
+        #ifndef __SYNTHESIS__
+            , ac_int<64, false>& c, ac_int<64, false>& numins
+        #endif
+            );
 
 
 #endif  // CORE_H

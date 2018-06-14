@@ -37,8 +37,11 @@
 #endif
 #define simul(...)      __VA_ARGS__
 
-
+#if 1
 #define coredebug(...)  printf(__VA_ARGS__)     // mandatory debug
+#else
+#define coredebug(...)
+#endif
 
 #else
 #define debug(...)
@@ -52,6 +55,14 @@
 #define DRAM_SIZE   (1 << 20)
 
 #define N           DRAM_SIZE
+
+#ifndef MEMORY_READ_LATENCY
+#define MEMORY_READ_LATENCY     5
+#endif
+
+#ifndef MEMORY_WRITE_LATENCY
+#define MEMORY_WRITE_LATENCY    5
+#endif
 
 
 void formatread (ac_int<32, false> address, ac_int<2, false> datasize, bool sign, ac_int<32, false>& read);

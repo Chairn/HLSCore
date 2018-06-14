@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
-import subprocess, os, sys, argparse
-from time import time
+import sys
 
 class Boundaries:
 	"""Class to represents discontinuous set.
@@ -14,7 +13,7 @@ class Boundaries:
 
 	def __repr__(self):
 		if len(self.bounds):
-			return " U ".join("[{};{}]".format(m, M) for m, M in b.bounds)
+			return " U ".join("[{:06x};{:06x}]".format(m, M) for m, M in self.bounds)
 		else:
 			return "Empty"
 		
@@ -28,7 +27,7 @@ class Boundaries:
 		for m, M in self.bounds:
 			yield m
 			yield M
-		
+	
 	def append(self, m, M):
 		self.bounds.append( (m, M) )
 		
@@ -61,12 +60,36 @@ def fifo(pol, way):			# called only on selection
 ##########################
 ##   Script functions   ##
 ##########################
+
+def init(_assoc = 4, _cachesize = 1024, _blocksize = 8, _policy = "lru"):
+	global assoc, sets, updatepolicy, policyselect
+	assoc = _assoc
+	cachesize = _cachesize
+	blocksize = _blocksize
+	sets = int((cachesize/(blocksize*4))/assoc)
+	policy = _policy
+	try:
+		updatepolicy = getattr(sys.modules["__main__"], policy)
+		policyselect = noselect
+	except:
+		updatepolicy = getattr(sys.modules["check"], policy)
+		policyselect = noselect
+	policy = 0 if policy == "none" else 1 if policy == "fifo" else 2 if policy == "lru" else 3 if policy == "random" else 0
 	
-def formatread(dmem, ad, size):
+def formatread(dmem, ad, size, sign):
 	read = 0
 	for i, j in enumerate(range(ad, ad+size+1)):
 		read |= (dmem[j][0] << (8*i))
+		# ~ print(i, read)
 	
+	# ~ print(sign, size, read & (1 << (8*(i+1)-1)))
+	if sign and read & (1 << (8*(i+1)-1)):
+		if size == 0:
+			read |= 0xFFFFFF00
+		elif size == 1:
+			read |= 0xFFFF0000
+		# ~ print(read)
+
 	return read
 	
 def formatwrite(dmem, ad, size, val):
@@ -74,7 +97,7 @@ def formatwrite(dmem, ad, size, val):
 		foo = (val & (0xFF << (8*i))) >> (8*i)
 		dmem[j] = (foo, True)
 		
-	return formatread(dmem, ad & 0xFFFFFFFC, 3)
+	return formatread(dmem, ad & 0xFFFFFFFC, 3, False)
 	
 def readpreambule(fichier, prog):
 	global lues
@@ -88,8 +111,8 @@ def readpreambule(fichier, prog):
 		print("Got pipelined file")
 	i = 2
 	lues.append(fichier.readline())
-	assert lues[0].split('/')[-1][:-1] == prog, "Wrong matching with "\
-	"program's name : {}".format(prog)
+	# ~ assert lues[0].split('/')[-1][:-1] == prog, "Wrong matching with "\
+	# ~ "program's name : {}".format(prog)
 	line = fichier.readline()
 	lues.append(line)
 	ibound = Boundaries()
@@ -142,7 +165,8 @@ def readpreambule(fichier, prog):
 	
 	return imem, dmem, ibound, dbound, i, pipe
 
-def parsefile(fichier, prog, cache=False):
+def parsefile(fichier, prog, cache=True):
+	# ~ global dmem
 	imem, dmem, ibound, dbound, i, pipe = readpreambule(fichier, prog)
 	
 	if pipe:
@@ -238,6 +262,9 @@ def parsefile(fichier, prog, cache=False):
 					
 					updatepolicy(dpolicy[sett], way)		# promotion of the accessed way
 					
+				# ~ print(line)
+				# ~ print("W" if we else "R", size, hex(ad), hex(mem), sign)
+					
 				if ad & 1:
 					assert size == 0, "{} line {} : {} address misalignment @{:06x}"\
 					.format(prog, i, line, ad)
@@ -255,7 +282,7 @@ def parsefile(fichier, prog, cache=False):
 						val = (writevalue & (0xFF << (8*n))) >> (8*n)
 						dpath.append( (a, val, we, size, sign) )
 				else:
-					check = formatread(dmem, ad, size)
+					check = formatread(dmem, ad, size, sign)
 					assert check == fread, "{} line {} : {} Formatted read failed @{:06x},"\
 					" expected {:02x} got {:02x}".format(prog, i, line, ad, check, fread)
 					
@@ -347,13 +374,18 @@ def parsefile(fichier, prog, cache=False):
 		
 	for ad in bis:
 		assert dmem[ad] == bis[ad], "{}\n Memory not consistent @{:06x} " \
-		": expected {} got {}".format(prog, ad, dmem[ad], bis[ad])
+		": expected {} got {}".format(prog, ad, dmem[ad], bis[ad])		
+		
 	return ipath, dpath, imem, dmem, endmem, cycles, cpi
 
-if __name__ == "__main__":
-	progs = os.listdir("benchmarks/build")
-	progs[:] = [p for p in progs if p.endswith(".out")]
+def checkoutput(name, cache):
+	with open("output.log", "r") as f:
+		a = parsefile(f, name, cache)
+		return a
 
+if __name__ == "__main__":
+	import os, subprocess, sys, argparse
+	
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-m", "--make", help="Build before comparing", action="store_true")
 	parser.add_argument("-n", "--nocache", help="Performs nocache comparison and build nocache if -m is set", action="store_true")
@@ -370,145 +402,125 @@ if __name__ == "__main__":
 	blocksize = 8 if args.blocksize is None else args.blocksize/4
 	sets = int((cachesize/(blocksize*4))/assoc)
 	policy = "lru" if args.policy is None else args.policy.lower()
-	updatepolicy = getattr(sys.modules["__main__"], policy)
-	policyselect = noselect
+	
+	try:
+		updatepolicy = getattr(sys.modules["__main__"], policy)
+		policyselect = noselect
+	except:
+		updatepolicy = getattr(sys.modules["check"], policy)
+		policyselect = noselect
 	policy = 0 if policy == "none" else 1 if policy == "fifo" else 2 if policy == "lru" else 3 if policy == "random" else 0
-	makeparameters = "-DSize={cachesize} -DBlocksize={blocksize} -DAssociativity={assoc} -DPolicy={policy}".format(**globals())
-
-	rcycles = list()
-	ncycles = list()
-	if args.nocache:
-		if args.make:
-			subprocess.check_call(["make", "DEFINES=-Dnocache"])
-		for p in progs:
-			if args.make:
-				with subprocess.Popen(["./catapult.sim", "benchmarks/build/"+p], stdout=subprocess.PIPE,\
-			 universal_newlines=True) as output:
-					current = "nocache"
-					nipath, ndpath, nimem, ndmem, nendmem, cycles, cpi = parsefile(output, p)
-					ncycles.append((cycles, cpi))
-			else:	
-				print("Loading uncached for", p)
-				with open("traces/nocache_"+p+".log", "r") as n:
-					current = "nocache"
-					nipath, ndpath, nimem, ndmem, nendmem, cycles, cpi = parsefile(n, p)
-					ncycles.append((cycles, cpi))
-				
-			print("\nLoading reference for", p)
-			with open("traces/ipath/ref_"+p+".log", "r") as r:
-				ripath, rdpath, rimem, rdmem, rendmem, cycles, cpi = parsefile(r, p)
-				rcycles.append((cycles, cpi))
-			
-			for i, el in enumerate(ripath):	# pc, registre modifié, nouvelle valeur
-				assert el == nipath[i],"{} : ipath in {} is different after {} instructions, expected "\
-			"(@{:06x} {} {:08x}) got (@{:06x} {} {:08x})".format(p, current, i, *(el+nipath[i]))
-
-			for i, el in enumerate(rdpath):	# address, valeur, (0:read, 1:write), datasize, sign extension
-				assert el == ndpath[i], "{} : dpath in {} is different after {} memory access, expected "\
-			"({}{} @{:06x} {:02x} {}) got ({}{} @{:06x} {:02x} {})".format(p, current, i, el[2], el[3], el[0],\
-			el[1], el[4], ndpath[i][2], ndpath[i][3], ndpath[i][0], ndpath[i][1], ndpath[i][4])
-			
-			for i, el in enumerate(rimem):
-				assert el == nimem[i], "{} : imem in {} is different @{:06x}, expected "\
-			"{:02x} got {:02x}".format(p, current, i, el, nimem[i])
-			
-			for i, el in enumerate(rdmem):
-				assert el == ndmem[i], "{} : dmem in {} is different @{:06x}, expected "\
-			"({:02x}, {}) got ({:02x}, {})".format(p, current, i, *(el+ndmem[i]))
-		
-			addresses = rendmem.keys() & nendmem.keys()
-			assert len(addresses) == len(rendmem) and len(addresses) == len(nendmem)
-			for ad in addresses:
-				assert rendmem[ad] == nendmem[ad], "{} : endmem in {} is different @{:06x}"\
-				", expected {:02x} got {:x02}".format(p, current, ad, rendmem[ad], nendmem[ad])
-		
-		print("\nTimings\n{:<20s} {:^21s} {:^21s}".format("Benchmark", "Reference", "Uncached"))
-		print("{:<20s} {:>10s} {:>10s} {:>10s} {:>10s}".format("", "Cycles",\
-		"CPI", "Cycles", "CPI"))
-		for i in range(len(rcycles)):
-			print("{:<20s} {:10d} {:^10.2f} {:10d} {:^10.2f}".format(progs[i], *zip(rcycles[i], ncycles[i])))
-		
-	rcycles = list()
-	ccycles = list()
-	if args.make:
-		subprocess.check_call(["make", "DEFINES="+makeparameters])
+	
+	progs = os.listdir("benchmarks/build")
+	progs[:] = [p for p in progs if p.endswith(".riscv")]
+	
+	a = dict()
 	for p in progs:
-		print("\nLoading reference for", p)
-		with open("traces/ipath/ref_"+p+".log", "r") as r:
-			ripath, rdpath, rimem, rdmem, rendmem, cycles, cpi = parsefile(r, p)	# ipath, dpath, imem, dmem, endmem
-			rcycles.append((cycles, cpi))
-		
-		if args.make:
-			with subprocess.Popen(["./catapult.sim", "benchmarks/build/"+p], stdout=subprocess.PIPE,\
-			universal_newlines=True) as output:
-				print("")
-				current = "cache"
-				try:
-					cipath, cdpath, cimem, cdmem, cendmem, cycles, cpi = parsefile(output, p, True)
-					ccycles.append((cycles, cpi))
-				except BaseException as e:
-					print(str(type(e)).split("'")[1], ":", e)
-					with open("traces/cache_"+p+".log", "w") as dump:
-						print("Dumping to", "traces/cache_"+p+".log")
-						dump.write("".join(line for line in lues))
-					cipath = ipath
-					cdpath = dpath
-					
-					for i, el in enumerate(ripath):	# pc, registre modifié, nouvelle valeur
-						assert el == cipath[i], "{} : ipath in {} is different after {} instructions, expected "\
-				"(@{:06x} {} {:08x}) got (@{:06x} {} {:08x})".format(p, current, i, *(el+cipath[i]))
-					
+		if p.split('_')[0] not in a:
+			a[p.split('_')[0]] = [p]
 		else:
-			print("\nLoading cache for", p)
-			with open("traces/cache_"+p+".log", "r") as c:
-				current = "cache"
-				try:
-					cipath, cdpath, cimem, cdmem, cendmem, cycles, cpi = parsefile(c, p, True)
-					ccycles.append((cycles, cpi))
-				except BaseException as e:
-					print(str(type(e)).split("'")[1], ":", e)
-					cipath = ipath
-					cdpath = dpath
-					
-					for i, el in enumerate(ripath):	# pc, registre modifié, nouvelle valeur
-						assert el == cipath[i], "{} : ipath in {} is different after {} instructions, expected "\
-				"(@{:06x} {} {:08x}) got (@{:06x} {} {:08x})".format(p, current, i, *(el+cipath[i]))
-					
-		
-		if ripath != cipath:				# != and == operator are much more faster than a loop
-			# if different, then look which elements are different
-			for i, el in enumerate(ripath):	# pc, registre modifié, nouvelle valeur
-				assert el == cipath[i], "{} : ipath in {} is different after {} instructions, expected "\
-				"(@{:06x} {} {:08x}) got (@{:06x} {} {:08x})".format(p, current, i, *(el+cipath[i]))
-		if rdpath != cdpath:
-			for i, el in enumerate(rdpath):	# address, valeur, (0:read, 1:write), datasize, sign extension
-				assert el == cdpath[i], "{} : dpath in {} is different after {} memory access, expected "\
-			"({}{} @{:06x} {:02x} {}) got ({}{} @{:06x} {:02x} {})".format(p, current, i, el[2], el[3], el[0],\
-			el[1], el[4], cdpath[i][2], cdpath[i][3], cdpath[i][0], cdpath[i][1], cdpath[i][4])
-		
-		if rimem != cimem:
-			for i, el in enumerate(rimem):
-				assert el == cimem[i], "{} : imem in {} is different @{:06x}, expected "\
-			"{:02x} got {:02x}".format(p, current, i, el, cimem[i])
+			a[p.split('_')[0]].append(p)
+	foo = list()
+	for l in a:
+		a[l].sort(key=lambda p: int(p.split('_')[2].split('.')[0]))
+		foo.append(a[l])
+	
+	progs = [val for tup in zip(*foo) for val in tup]
+	del a, foo
+	
+	
+	if args.make:
+		makeparameters = "DEFINES=-DSize={cachesize} -DBlocksize={blocksize} -DAssociativity={assoc} -DPolicy={policy}".format(**globals())
+		if args.nocache:
+			makeparameters += " -Dnocache"
+		subprocess.check_call(["make", makeparameters])
+	
+	cycles = list()
+	cpis = list()
+	for p in progs:		
+		try:
+			with subprocess.Popen(["./catapult.sim", "benchmarks/build/"+p], stdout=subprocess.PIPE, universal_newlines=True) as output:
+				ipath, dpath, imem, dmem, endmem, cycle, cpi = parsefile(output, p, not args.nocache)
+				
+			cycles.append(cycle)
+			cpis.append(cpi)
 			
-		if rdmem != cdmem:
-			for i, el in enumerate(rdmem):
-				assert el == cdmem[i], "{} : dmem in {} is different @{:06x}, expected "\
-			"({:02x}, {}) got ({:02x}, {})".format(p, current, i, el[0], el[1], cdmem[i][0], cdmem[i][1])
+			with open("benchmarks/res/"+p[:-6], "r") as resfile:
+				text = resfile.read().split()
+				if "char" in p:
+					res = [int(i) & 0xFF for i in text]
+				elif "short" in p:
+					text = [int(i) & 0xFFFF for i in text]
+					res = []
+					for i in text:
+						assert i >= 0
+						res.append(i & 0x00FF)
+						res.append((i & 0xFF00) >> 8)
+				elif "int64" in p:
+					text = [int(i) for i in text]
+					res = []
+					for i in text:
+						assert i >= 0
+						res.append(i & 0x00000000000000FF)
+						res.append((i & 0x000000000000FF00) >> 8)
+						res.append((i & 0x0000000000FF0000) >> 16)
+						res.append((i & 0x00000000FF000000) >> 24)
+						res.append((i & 0x000000FF00000000) >> 32)
+						res.append((i & 0x0000FF0000000000) >> 40)
+						res.append((i & 0x00FF000000000000) >> 48)
+						res.append((i & 0xFF00000000000000) >> 56)
+				elif "int" in p:
+					text = [int(i) for i in text]
+					res = []
+					for i in text:
+						assert i >= 0
+						res.append(i & 0x000000FF)
+						res.append((i & 0x0000FF00) >> 8)
+						res.append((i & 0x00FF0000) >> 16)
+						res.append((i & 0xFF000000) >> 24)
+			
+			dmem = [el[0] for el in dmem]
+			
+			def sublist(sub, biglist):
+				j = 0
+				for i in range(len(biglist)):
+					if biglist[i] == sub[j]:
+						j += 1
+						if j == len(sub):
+							return True
+					else:
+						j = 0
+				return False
+				
+			# ~ assert sublist(res, dmem), "{} result is incorrect".format(p)
+			assert str(res)[1:-1] in str(dmem), "{} result is incorrect".format(p)
+	
+		except BaseException as e:
+				with open("traces/{}cache_{}.log".format("no" if args.nocache else "", p), "w") as dump:
+					print("Dumping to", dump.name)
+					dump.write("".join(line for line in lues))
+				raise e
+	
+	if args.nocache:
+		with open("timesnocache.txt", "w") as times:
+			print("{:<30s} {:>8s} {:>9s}".format("Benchmark", "Cycles", "CPI"), file = times)
+			for i, p in enumerate(progs):
+				print("{:<30s} {:>8d} {:>9.2f}".format(p, cycles[i], cpis[i]), file = times)
+	else:
+		timings = dict()
+		with open("timesnocache.txt", "r") as times:
+			times.readline()
+			for line in times:
+				l = line.split()
+				if len(l) == 3:
+					timings[l[0]] = (int(l[1]), float(l[2]))
 		
-		if rendmem != cendmem:
-			addresses = rendmem.keys() & cendmem.keys()
-			assert len(addresses) == len(rendmem) and len(addresses) == len(cendmem)
-			for ad in addresses:
-				assert rendmem[ad] == cendmem[ad], "{} : endmem in {} is different @{:06x}"\
-				", expected {:02x} got {:x02}".format(p, current, ad, rendmem[ad], cendmem[ad])
+		with open("res.txt", "w") as res:
+			print("{:<30s} {:^21s} {:^21s}".format("Timings", "Uncached", "Cache"), file = res)
+			print("{:<30s} {:>7s} {:>10s} {:>10s} {:>10s} {:>10s}".format("Benchmark", "Cycles",\
+			"CPI", "Cycles", "CPI", "Speedup"), file = res)
+	
+			for i, p in enumerate(progs):
+				print("{:<30s} {:7d} {:>10.2f} {:10d} {:>10.2f} {:>+10.0%}".format(p, timings[p][0],\
+				timings[p][1], cycles[i], cpis[i], timings[p][1]/cpis[i]), file = res)
 
-	del lues
-	print("\n\n{:<20s} {:^21s} {:^21s}".format("Timings", "Reference", "Cache"))
-	print("{:<20s} {:>7s} {:>10s} {:>10s} {:>10s} {:>10s}".format("Benchmark", "Cycles",\
-	"CPI", "Cycles", "CPI", "Variation"))
-	for i in range(len(rcycles)):
-		print("{:<20s} {:7d} {:>10.2f} {:10d} {:>10.2f} {:>+10.0%}".format(progs[i], rcycles[i][0],\
-		rcycles[i][1], ccycles[i][0], ccycles[i][1], ccycles[i][0]/rcycles[i][0]-1))
-	
-	
